@@ -25,7 +25,7 @@ Gut Check is a journal for your judgment. You write down decisions and predictio
 Open Gut Check at one of:
 
 - **GitHub Pages:** https://ryelikebread.github.io/gut-check/ (data stays in that browser)
-- **Your server:** `http://your-server:8080` (data is saved on the server and shared by all your devices)
+- **Your server:** `http://your-server:8801` (data is saved on the server and shared by all your devices)
 
 On a phone, use the browser's **Add to Home Screen / Install app** to get an app icon. It works offline (over https).
 
@@ -181,12 +181,12 @@ cp .env.example .env
 nano .env                # optional: uncomment and set what you want (see below)
 docker compose up -d --build
 ```
-Open `http://<server-ip>:8080`. On the very first start the server downloads the model in the background (watch it with `docker compose logs -f gut-check`, or see "Now using" in Settings). Until it's ready the devil's advocate uses the built-in version.
+Open `http://<server-ip>:8801`. On the very first start the server downloads the model in the background (watch it with `docker compose logs -f gut-check`, or see "Now using" in Settings). Until it's ready the devil's advocate uses the built-in version.
 
 ### Settings (.env)
 | Setting | Default | What it does |
 |---|---|---|
-| `PORT` | 8080 | Port on the server. |
+| `PORT` | 8801 | Port on the server. |
 | `TZ` | UTC | Your time zone, e.g. `America/Denver`; used for reminder timing. |
 | `SYNC_TOKEN` | (none) | Password for the sync API. The app asks for it once per device (Settings → Server). Strongly recommended if anyone else can reach the port. |
 | `APP_URL` | (none) | The address you open Gut Check at; used for links in reminders and calendar events. |
@@ -216,7 +216,7 @@ After changing `.env`: `docker compose up -d` (add `--build` after pulling new c
 | `docker compose -f docker-compose.static.yml up -d --build` | Just the static web app (nginx), like GitHub Pages. |
 | `npm start` (Node 18+) | Without Docker; data goes to `./data`. Set `OLLAMA_URL=http://localhost:11434` if Ollama runs on the host. |
 
-**HTTPS without a domain:** install [Tailscale](https://tailscale.com) on the server and your devices, then `tailscale serve --bg 8080`; you get `https://<server>.<tailnet>.ts.net`, private to your devices. https is what lets phones install the app and lets the GitHub Pages copy connect.
+**HTTPS without a domain:** install [Tailscale](https://tailscale.com) on the server and your devices, then `tailscale serve --bg 8801`; you get `https://<server>.<tailnet>.ts.net`, private to your devices. https is what lets phones install the app and lets the GitHub Pages copy connect.
 
 ### Updating
 ```sh
@@ -387,7 +387,7 @@ See the table in the [README](../README.md#repo-layout). Each skin is one file i
 | No reminder arrived | Settings → Reminders → Send a test reminder; check `TZ` and `REMINDER_HOUR`; check the logs. |
 | Out of memory / server sluggish | The model is too big for the RAM; set a smaller `DEVIL_MODEL`, or `OLLAMA_KEEP_ALIVE=2m` to unload it sooner. |
 | Changes to the app don't show | Hard-refresh. If you edited `public/`, bump `VERSION` in `public/sw.js`. |
-| Port 8080 is taken | `PORT=8090` in `.env`. |
+| Port 8801 is taken | `PORT=8802` in `.env`. |
 
 ## 15. Server API reference
 

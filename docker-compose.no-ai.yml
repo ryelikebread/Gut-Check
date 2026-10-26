@@ -8,11 +8,12 @@ services:
     container_name: gut-check
     restart: unless-stopped
     ports:
-      - "${PORT:-8080}:8080"
+      - "${PORT:-8801}:8801"
     env_file:
       - path: .env
         required: false
     environment:
+      PORT: "8801"            # inside the container; set PORT in .env to change the host port
       OLLAMA_URL: ""
       TZ: ${TZ:-UTC}
     volumes:

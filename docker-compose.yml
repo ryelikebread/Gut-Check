@@ -1,7 +1,7 @@
 # Gut Check: app server + local AI model (Ollama) for the devil's advocate.
-#   docker compose up -d --build            -> http://your-server:8080
+#   docker compose up -d --build            -> http://your-server:8801
 # Settings go in a file named .env next to this one (copy .env.example). Common ones:
-#   PORT=8090                    another host port
+#   PORT=8802                    another host port
 #   SYNC_TOKEN=long-password     sync password (recommended if others can reach the port)
 #   DEVIL_MODEL=qwen3:4b         a smaller/bigger model (see docs/USER-GUIDE.md)
 #   TZ=America/Denver            your time zone, for reminder timing
@@ -15,11 +15,12 @@ services:
     container_name: gut-check
     restart: unless-stopped
     ports:
-      - "${PORT:-8080}:8080"
+      - "${PORT:-8801}:8801"
     env_file:
       - path: .env
         required: false
     environment:
+      PORT: "8801"            # inside the container; set PORT in .env to change the host port
       OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       DEVIL_MODEL: ${DEVIL_MODEL:-qwen3:8b}
       TZ: ${TZ:-UTC}

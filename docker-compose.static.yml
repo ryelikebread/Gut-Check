@@ -9,4 +9,4 @@ services:
     container_name: gut-check
     restart: unless-stopped
     ports:
-      - "${PORT:-8080}:80"
+      - "${PORT:-8801}:80"
