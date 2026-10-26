@@ -66,3 +66,80 @@ test("each skin has its own voice offline", () => {
   for (const s of D.list().filter(s => s.voiceLines)) for (const v of Object.keys(s.voiceLines))
     if (Object.keys(s.voiceLines[v]).some(k => keys.includes(k))) for (const k of keys) assert.ok(s.voiceLines[v][k] !== undefined, `${s.id}/${v} lacks ${k}`);
 });
+
+/* ---------- reasoning must never reach the screen ---------- */
+const MORT = "Hmph. Kid, you're ninety percent sure about a job you've never seen from the inside. Knew a fella who said the same. Sleep on it.";
+const NOTES = [
+  "First, I need to understand the user's decision. They want to take the job and feel 90% sure.",
+  "Structure:",
+  "1. Acknowledge what's sensible",
+  "2. Outside view",
+  "Word count: under 180 words",
+  "Now draft in Old Mort's voice."
+].join("\n");
+
+test("a <think> block is stripped, however the model leaves it", () => {
+  const mort = D.get("mentor");
+  const shown = t => D.parseTurns(t, mort).map(x => x.text).join(" ");
+  assert.equal(shown(`<think>\nOkay, so the user wants a counterargument. Structure: ...\nWord count: 100\n</think>\n\n${MORT}`), MORT, "closed block");
+  assert.equal(shown(`<think>\nFirst, I need to understand... still thinking`), "", "block that never closes yields nothing");
+  assert.equal(shown(`First, I need to understand the user.\nWord count: 100\n</think>\n${MORT}`), MORT, "closing tag only");
+  assert.equal(shown(`<thinking>plan plan</thinking>${MORT}`), MORT, "<thinking> variant");
+  assert.equal(shown(`Thinking...\nFirst, I need to look at this.\n...done thinking.\n\n${MORT}`), MORT, "console-style thinking");
+  assert.equal(shown(`Planning notes here.\nFinal answer: ${MORT}`), MORT, "text after a 'Final answer:' label");
+  assert.ok(!/think|Word count|Structure/i.test(shown(`<think>Structure: x\nWord count: 5</think>${MORT}`)));
+});
+
+test("planning notes are recognised, in-character replies are not", () => {
+  assert.equal(D.looksLikePlanning(NOTES), true);
+  assert.equal(D.looksLikePlanning(`${NOTES}\n\n${MORT}`), true, "notes followed by the reply are still rejected");
+  assert.equal(D.looksLikePlanning("Okay, so the user is thinking about taking a new job."), true);
+  assert.equal(D.looksLikePlanning("Structure: acknowledge, outside view, check"), true);
+  assert.equal(D.looksLikePlanning("Let me think about how Old Mort would say this."), true);
+  assert.equal(D.looksLikePlanning(`<think>First, I need to plan.</think>${MORT}`), false, "reasoning in a think block is fine once removed");
+  for (const ok of [MORT, "Okay, kid, here's the thing.", "I need to tell you something, kid.", "Hmm, ninety percent. Interesting.", "First, kid, ask yourself why.", "Hoo. Tell me, what would change your mind?",
+    "Chief Justice Marlow: The court has heard the petitioner.\nJustice Vance: Ninety percent is a lot.\nChief Justice Marlow: Ruling: check first."])
+    assert.equal(D.looksLikePlanning(ok), false, ok);
+  for (const s of D.list()) for (const e of entries) {
+    const text = D.offline(e, s, {}).map(t => s.mode === "dialogue" ? `${s.voices.find(v => v.id === t.voice).name}: ${t.text}` : t.text).join("\n");
+    assert.equal(D.looksLikePlanning(text), false, `${s.id}'s own offline wording must not trip the guard`);
+  }
+});
+
+test("the prompt asks for the finished reply only, and keeps the skin's personality", () => {
+  for (const s of D.list()) {
+    const sys = D.messages(entries[0], s)[0].content;
+    assert.match(sys, /Answer directly with only the finished reply/);
+    assert.ok(sys.includes(s.persona), `${s.id}'s personality text is unchanged`);
+  }
+  const retry = D.messages(entries[0], "mentor", { stricter: true })[1].content;
+  assert.match(retry, /planning notes instead of the reply/);
+});
+
+test("a reply of planning notes is thrown away and asked for once more", async () => {
+  const calls = [], shown = [];
+  const stream = async (msgs, onDelta) => {
+    calls.push(msgs);
+    const text = calls.length === 1 ? NOTES : `<think>draft</think>${MORT}`;
+    for (const piece of text.match(/[\s\S]{1,9}/g)) onDelta(piece);
+    return { model: "qwen3:8b" };
+  };
+  const r = await D.answer(entries[0], "mentor", {}, stream, t => shown.push(t));
+  assert.equal(calls.length, 2, "exactly one retry");
+  assert.equal(r.retried, true);
+  assert.equal(r.model, "qwen3:8b");
+  assert.deepEqual(r.turns.map(t => t.text), [MORT]);
+  assert.ok(!calls[0][1].content.includes("planning notes instead"), "first try is the normal prompt");
+  assert.match(calls[1][1].content, /planning notes instead of the reply/, "second try is firmer");
+  assert.ok(shown.every(t => !JSON.stringify(t).match(/Word count|Structure|I need to understand/)), "notes were never shown while streaming");
+});
+
+test("if the model keeps planning, it gives up so the built-in advocate can answer", async () => {
+  let n = 0;
+  await assert.rejects(D.answer(entries[0], "mentor", {}, async (m, onDelta) => { n++; onDelta(NOTES); return {}; }), e => e.code === "planning");
+  assert.equal(n, 2, "tried once and retried once, no more");
+  let k = 0;
+  const ok = await D.answer(entries[0], "mentor", {}, async (m, onDelta) => { k++; onDelta(MORT); return {}; });
+  assert.equal(k, 1, "a good reply is not retried");
+  assert.equal(ok.retried, false);
+});
