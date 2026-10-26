@@ -122,7 +122,27 @@ How to use it honestly: rate the decision on what you knew **at the time**, befo
 
 **Over/underconfidence line:** your average confidence in the side you picked, compared with how often that side was right.
 
-**Luck or skill?** grid: each reviewed decision placed by decision quality (3+ out of 5 = sound) and how it turned out (3+ = good result): *Earned it*, *Bad luck*, *Dumb luck*, *Lesson*.
+### How good and bad luck are decided (the "Luck or skill?" grid)
+
+Each reviewed decision is sorted using **two ratings you gave in the review**, and nothing else:
+
+- **Was it a sound decision?** Your **hindsight rating** (question 3: how good the decision was, knowing only what you knew then). **3, 4 or 5 = sound. 1 or 2 = shaky.**
+- **Was the result good?** Your answer to *"How did things turn out for you overall?"* (question 2). **3, 4 or 5 = good result. 1 or 2 = poor result.**
+
+The midpoint counts in your favour: **3 out of 5 is "sound" and 3 out of 5 is "good".**
+
+| | **Good result** (3–5) | **Poor result** (1–2) |
+|---|---|---|
+| **Sound decision** (3–5) | **Earned it**: you decided well and it paid off. | **Bad luck**: you decided well, it didn't work out. Don't change your method. |
+| **Shaky decision** (1–2) | **Dumb luck**: it worked, but the thinking was thin. Don't count on repeating it. | **Lesson**: shaky thinking, poor result. The one to learn from. |
+
+Things worth knowing:
+
+- **It is your own judgment, not a calculation.** Gut Check doesn't decide what was luck; it places the decision where your two ratings put it. So the labels are only as honest as the ratings. Rate the decision before you look at the result, as described above.
+- **The yes / partly / no question ("did what you expected happen?") isn't used here.** It only feeds the forecast score. That is why a decision can be "Bad luck" even though you were confident and it didn't happen: what matters is that you rated the thinking sound.
+- Only **decisions** appear in the grid, and only once **both** ratings are filled in. Predictions, entries you marked "Can't tell", and open entries aren't counted.
+- The grid and the judgment score are separate. The result rating only places a decision in the grid. The hindsight rating feeds both.
+- Changing your mind later (Undo review, then review again) re-sorts the decision.
 
 ## 6. The devil's advocate
 
