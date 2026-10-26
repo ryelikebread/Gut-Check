@@ -15,7 +15,7 @@ Verify how good your gut actually is.
 | Address | https://ryelikebread.github.io/gut-check/ | `http://your-server:8801` |
 | Data | In each browser only (backup/restore by file) | On the server, synced across devices, with automatic backups |
 | Review reminders | In the app, plus calendar files | Also phone push (ntfy), email or chat webhook, and a live calendar feed |
-| Devil's advocate | Built-in advocate, or your server / your own Ollama | Local AI model (Ollama, default `qwen3:8b`), nothing leaves the machine |
+| Devil's advocate | Built-in advocate, or your server / your own Ollama | Local AI model (Ollama, default `qwen3:8b`, changeable in Settings), nothing leaves the machine |
 
 ### Server quick start
 ```sh
@@ -33,7 +33,7 @@ npm start          # Node 18+, no npm install needed; data goes to ./data
 
 ### Development
 ```sh
-npm test           # 19 tests: scoring, sync merge, skins, server, reminders, Ollama proxy
+npm test           # 21 tests: scoring, sync merge, skins, server, reminders, Ollama proxy, model picker
 python3 -m http.server 8801 -d public    # static copy, no server features
 ```
 

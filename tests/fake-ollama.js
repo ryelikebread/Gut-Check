@@ -1,8 +1,8 @@
 "use strict";
-/* A stand-in for Ollama used by the tests: answers /api/tags, /api/pull and a streaming /api/chat. */
+/* A stand-in for Ollama used by the tests: answers /api/tags, /api/pull, /api/delete and a streaming /api/chat. */
 const http = require("http");
 
-function start({ models = ["qwen3:8b"], reply = "Chief Justice Marlow: We have heard.\nJustice Vance: Too sure.\nChief Justice Marlow: Ruling: check first.", rejectThink = false, pullError = null } = {}) {
+function start({ models = ["qwen3:8b"], reply = "Chief Justice Marlow: We have heard.\nJustice Vance: Too sure.\nChief Justice Marlow: Ruling: check first.", rejectThink = false, pullError = null, pullSteps = 1, pullStepMs = 0 } = {}) {
   const calls = [];
   const srv = http.createServer((req, res) => {
     let body = "";
@@ -13,14 +13,24 @@ function start({ models = ["qwen3:8b"], reply = "Chief Justice Marlow: We have h
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type");
       if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
-      if (req.url === "/api/tags") { res.writeHead(200, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ models: models.map(name => ({ name })) })); }
+      if (req.url === "/api/tags") { res.writeHead(200, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ models: models.map(name => ({ name, size: 1e9, details: { parameter_size: "1B", quantization_level: "Q4_K_M" } })) })); }
+      if (req.url === "/api/delete" && req.method === "DELETE") {
+        const i = models.indexOf(json.model);
+        if (i < 0) { res.writeHead(404, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ error: "model not found" })); }
+        models.splice(i, 1); res.writeHead(200); return res.end();
+      }
       if (req.url === "/api/pull") {
         res.writeHead(200, { "Content-Type": "application/x-ndjson" });
         if (pullError) return res.end(JSON.stringify({ error: pullError }) + "\n");
-        res.write(JSON.stringify({ status: "pulling", total: 100, completed: 50 }) + "\n");
-        models.push(json.model);
-        res.end(JSON.stringify({ status: "success" }) + "\n");
-        return;
+        let step = 0, gone = false;
+        res.on("close", () => { gone = true; });
+        const next = () => {
+          if (gone) return;
+          if (step < pullSteps) { step++; res.write(JSON.stringify({ status: "pulling", total: 100, completed: Math.round(step / (pullSteps + 1) * 100) }) + "\n"); return setTimeout(next, pullStepMs); }
+          models.push(json.model);
+          res.end(JSON.stringify({ status: "success" }) + "\n");
+        };
+        return next();
       }
       if (req.url === "/api/chat") {
         if (!models.includes(json.model)) { res.writeHead(404, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ error: "model not found" })); }
