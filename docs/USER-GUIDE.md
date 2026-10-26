@@ -90,7 +90,31 @@ You'll immediately see your score for that entry. Not ready yet? **Too early to 
 
 So a "50%" shrug always gets 75. Beating 75 consistently means your gut adds information; being very sure and wrong is punished hard.
 
-**Judgment score** (decisions) = average of the forecast score and your hindsight rating of the decision (1/5 = 0, 5/5 = 100). The big number on Scores is the average over all reviewed decisions.
+### The judgment score and the hindsight rating
+
+Your **hindsight rating** is question 3 in the review: *"Knowing only what you knew back then, how good was the decision?"* from 1 (bad call) to 5 (excellent). It is your own verdict on the **decision**, separate from how things turned out. It counts as 0, 25, 50, 75 or 100 points for 1, 2, 3, 4 or 5.
+
+The **judgment score** for one decision is half and half:
+
+> **Judgment = 50% forecast score + 50% hindsight points**
+
+- The **forecast score** (above) is how well your confidence matched what happened. It rewards being right *and* being appropriately sure.
+- The **hindsight points** are your honest rating of the quality of the thinking: did you gather what you could, weigh the options, avoid wishful thinking?
+- The **"how did it turn out for you" rating (question 2) is not in the judgment score.** It only places the decision on the luck-or-skill grid, so a lucky win can't inflate your judgment.
+- *Partly* counts as 0.5 for the forecast score. *Can't tell* and decisions you haven't reviewed are left out.
+- **Predictions** have no hindsight rating, so a prediction's score is just its forecast score.
+- The big number on Scores is the **average over all reviewed decisions**.
+
+Worked examples (you were 80% sure):
+
+| What happened | Hindsight | Forecast | Judgment | Grid label |
+|---|---|---|---|---|
+| It worked out | 4/5 (good call) | 96 | **86** | Earned it |
+| It didn't work out | 4/5 (good call) | 36 | **56** | Bad luck: the thinking was sound, the dice weren't |
+| It worked out | 2/5 (shaky) | 96 | **61** | Dumb luck: it worked, but don't count on it |
+| It didn't work out | 2/5 (shaky) | 36 | **31** | Lesson |
+
+How to use it honestly: rate the decision on what you knew **at the time**, before you look at the result. A bad outcome from a well-made decision should still get a 4 or 5, and a lucky win from a sloppy one a 1 or 2. Over many decisions the judgment score rises when you decide well and forecast well, not just when you win. A steady run of "Dumb luck" is a warning that your good results aren't coming from good process.
 
 **Calibration score** = average forecast score over everything resolved (decisions and predictions). **Brier score** is the same idea on the usual 0–1 scale where lower is better and 0.25 is a coin flip.
 
