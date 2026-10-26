@@ -1,0 +1,45 @@
+# Automatic HTTPS with Caddy (Let's Encrypt). Needs a domain pointing at this server and ports 80/443 open.
+#   DOMAIN=gutcheck.example.com docker compose -f docker-compose.https.yml up -d --build
+# Same as docker-compose.yml otherwise (app + local AI model). Set SYNC_TOKEN in .env: the app is on the internet.
+services:
+  gut-check:
+    build: .
+    image: gut-check
+    container_name: gut-check
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      DEVIL_MODEL: ${DEVIL_MODEL:-qwen3:8b}
+      APP_URL: https://${DOMAIN}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - gut-check-data:/data
+    depends_on:
+      - ollama
+  ollama:
+    image: ${OLLAMA_IMAGE:-ollama/ollama:latest}
+    container_name: gut-check-ollama
+    restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-15m}
+      OLLAMA_NUM_PARALLEL: "1"
+    volumes:
+      - ollama-models:/root/.ollama
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN to your domain name}
+    command: caddy reverse-proxy --from ${DOMAIN} --to gut-check:8080
+    volumes:
+      - caddy_data:/data
+volumes:
+  gut-check-data:
+  ollama-models:
+  caddy_data:

@@ -1,0 +1,21 @@
+# Gut Check without a local AI model: sync, backups and reminders only.
+# The devil's advocate still works using its built-in (offline) version.
+#   docker compose -f docker-compose.no-ai.yml up -d --build
+services:
+  gut-check:
+    build: .
+    image: gut-check
+    container_name: gut-check
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      OLLAMA_URL: ""
+      TZ: ${TZ:-UTC}
+    volumes:
+      - gut-check-data:/data
+volumes:
+  gut-check-data:

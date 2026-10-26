@@ -1,0 +1,45 @@
+# Gut Check: app server + local AI model (Ollama) for the devil's advocate.
+#   docker compose up -d --build            -> http://your-server:8080
+# Settings go in a file named .env next to this one (copy .env.example). Common ones:
+#   PORT=8090                    another host port
+#   SYNC_TOKEN=long-password     sync password (recommended if others can reach the port)
+#   DEVIL_MODEL=qwen3:4b         a smaller/bigger model (see docs/USER-GUIDE.md)
+#   TZ=America/Denver            your time zone, for reminder timing
+# Data lives in the "gut-check-data" volume; downloaded AI models live in "ollama-models".
+# NVIDIA GPU? Add:  -f docker-compose.yml -f docker-compose.gpu.yml
+# No AI model at all? Use docker-compose.no-ai.yml instead.
+services:
+  gut-check:
+    build: .
+    image: gut-check
+    container_name: gut-check
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      DEVIL_MODEL: ${DEVIL_MODEL:-qwen3:8b}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - gut-check-data:/data
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ${OLLAMA_IMAGE:-ollama/ollama:latest}
+    container_name: gut-check-ollama
+    restart: unless-stopped
+    # Not published to the network by default: only the app talks to it.
+    # To let the GitHub Pages copy use it directly, see "Ollama directly" in the user guide.
+    environment:
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-15m}
+      OLLAMA_NUM_PARALLEL: "1"
+    volumes:
+      - ollama-models:/root/.ollama
+
+volumes:
+  gut-check-data:
+  ollama-models:
