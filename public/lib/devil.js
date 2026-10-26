@@ -54,7 +54,8 @@
     "- Cover the outside view (how situations like this usually go), what they may be overlooking (alternatives, risks, people affected, second-order effects), and what would have to be true for them to be right.",
     "- Finish with one concrete, cheap check they could do before committing, and, if their confidence looks too high or too low, a number you would find more defensible.",
     "- Do not decide for them. They may well be right.",
-    "- Plain text only: no markdown, no headings, no bullet symbols, no emoji."
+    "- Plain text only: no markdown, no headings, no bullet symbols, no emoji.",
+    "- Answer directly with only the finished reply, spoken in character. Do not show your reasoning, plans, outlines, drafts, structure, word counts or notes, and do not write <think> tags. The very first words you write must already be the character speaking."
   ].join("\n");
 
   function messages(entry, skin, ctx = {}) {
@@ -70,14 +71,47 @@
     }
     return [
       { role: "system", content: BASE + "\n\nCharacter:\n" + skin.persona + "\n\nFormat:\n" + format },
-      { role: "user", content: describe(entry, ctx) + "\n\nPlease play devil's advocate." }
+      { role: "user", content: describe(entry, ctx) + "\n\nPlease play devil's advocate. Reply with the finished answer only, in character, with no planning notes." + (ctx.stricter ? "\n\nYour previous attempt began with planning notes instead of the reply. Do not plan or explain. Start immediately with the character's first line." : "") }
     ];
   }
 
   /* ---------- parsing a model reply into turns ---------- */
+  /* Reasoning models (Qwen3, DeepSeek-R1 and friends) can leak their working into the reply.
+     Everything that is reasoning rather than the answer is removed here, so it is never shown or stored. */
+  const THINK_TAGS = "think|thinking|thought|reasoning|reflection|scratchpad|analysis";
+  function stripReasoning(text) {
+    let t = String(text || "");
+    t = t.replace(new RegExp(`<(${THINK_TAGS})>[\\s\\S]*?(</\\1>|$)`, "gi"), "");          // <think>...</think>, also one that never closes
+    t = t.replace(new RegExp(`^[\\s\\S]*?</(${THINK_TAGS})>`, "i"), "");                       // reasoning with only a closing tag
+    t = t.replace(/^\s*Thinking\.\.\.[\s\S]*?(\.\.\.done thinking\.?|$)/i, "");              // "Thinking... ...done thinking." (Ollama's console style)
+    const mark = /^\s*(final (answer|reply|response)|here(?:'|’)s (?:the |my )?(?:final|finished) (?:answer|reply|response))\s*[:\-–]\s*/gim;
+    let m, last = null; while ((m = mark.exec(t))) last = m;
+    if (last) t = t.slice(last.index + last[0].length);                                       // keep only what follows a "Final answer:" label
+    return t;
+  }
+  /* True if the reply starts, or is mixed up, with the model's planning notes instead of the finished answer. */
+  const PLAN_OPEN = new RegExp("^\\s*(" + [
+    "(okay|ok|alright),? (so,? )?(the user|let me|let(?:'|’)s|let us|first|i need|i should|i have to|i must|i(?:'|’)ll need|i want to)\\b",
+    "first,? (i (need|should|must|have to|want to|will|(?:'|’)ll)|let me|let(?:'|’)s|let us)\\b",
+    "let me (think|start|draft|figure|understand|analy[sz]e|make sure|plan|outline|craft|consider|break)\\b",
+    "let(?:'|’)s (think|start|draft|figure|break|analy[sz]e|plan|outline|craft|consider)\\b",
+    "i need to (understand|figure|think|make sure|structure|write|craft|draft|keep|consider|cover|break|analy[sz]e|address|respond|come up|create|produce|be careful|stay|decide|start|acknowledge|include|find|ensure|check|identify|parse)\\b",
+    "i should (start|begin|make sure|structure|keep|note|check|draft|write|aim|cover|include|mention|acknowledge|use|avoid|stay|first)\\b",
+    "i(?:'|’)ll (need to|start by|begin by|draft|craft|structure|make sure|aim for)\\b",
+    "i will (need to|start by|begin by|draft|craft|structure|make sure|aim for)\\b",
+    "the user (is|has|wants|asked|says|said|wrote|mentioned|needs|provided|gave|seems|describes)\\b",
+    "as (the|a|an) (devil(?:'|’)s advocate|assistant|ai)\\b",
+    "here(?:'|’)s (my|the|a) (plan|approach|outline|draft|structure|breakdown)\\b",
+    "(thinking|thought) process", "step \\d"
+  ].join("|") + ")", "i");
+  const PLAN_LABEL = /^\s*[\-*•\d.)\s]*(structure|word count|word limit|length|plan|outline|draft|constraints?|thought process|thinking|reasoning|approach|self[- ]?check|notes? to self|character voice|voice check|key points?|steps?|goal|task|requirements?|analysis|checklist|final check|revised)\s*[:：]/im;
+  function looksLikePlanning(text) {
+    const t = stripReasoning(text).replace(/^[\s"'*_#>]+/, "");
+    if (!t) return false;
+    return PLAN_OPEN.test(t) || PLAN_LABEL.test(t);
+  }
   function clean(text) {
-    return String(text || "")
-      .replace(/<think>[\s\S]*?(<\/think>|$)/gi, "")
+    return stripReasoning(text)
       .replace(/^\s*#+\s*/gm, "")
       .replace(/\*\*|__/g, "")
       .replace(/^\s*[-*•]\s+/gm, "")
@@ -101,6 +135,27 @@
       else turns.push({ voice: first, text: line });
     }
     return turns.filter(t => t.text);
+  }
+
+  /* What may be shown while a reply is still streaming in: nothing at all while it looks like planning notes. */
+  function visibleTurns(text, skin) { return looksLikePlanning(text) ? [] : parseTurns(text, skin); }
+
+  /* Gets a finished counterargument from a model. `stream(messages, onDelta)` talks to the model and resolves
+     when it is done. A reply that is empty or is planning notes instead of the answer is thrown away and the
+     model is asked once more, more firmly; if it happens again this throws and the caller falls back to the
+     built-in advocate. Reasoning is never returned, so it is never displayed or saved. */
+  async function answer(entry, skin, ctx, stream, onTurns) {
+    skin = typeof skin === "string" ? get(skin) : skin;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let text = "";
+      const r = await stream(messages(entry, skin, Object.assign({}, ctx, { stricter: attempt > 0 })), d => { text += d; if (onTurns) onTurns(visibleTurns(text, skin)); });
+      const turns = parseTurns(text, skin);
+      if (turns.length && !looksLikePlanning(text)) return { turns, model: (r && r.model) || "", retried: attempt > 0 };
+      if (onTurns) onTurns([]);
+    }
+    const err = new Error("the model kept writing out its planning notes instead of the reply");
+    err.code = "planning";
+    throw err;
   }
 
   /* ---------- offline advocate ----------
@@ -182,5 +237,5 @@
     return turns.filter(t => t && t.text);
   }
 
-  return { register, list, get, describe, messages, parseTurns, clean, offline, offlinePoints, LINES, skins };
+  return { register, list, get, describe, messages, parseTurns, visibleTurns, stripReasoning, looksLikePlanning, answer, clean, offline, offlinePoints, LINES, skins };
 });

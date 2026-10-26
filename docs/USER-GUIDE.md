@@ -487,6 +487,7 @@ See the table in the [README](../README.md#repo-layout). Each skin is one file i
 | Picked a model that's too big | Settings → Brains → AI model → **Use** on a smaller one, then **Remove** the big one. |
 | Answers are slow | Switch to a smaller model (`qwen3:4b`) in Settings → Brains → AI model, or use a GPU. The first answer after a pause includes loading the model. |
 | Answers time out | Raise `DEVIL_TIMEOUT_SEC`, or use a smaller model. |
+| The reply shows the model's planning notes ("First, I need to understand…", "Structure:", "Word count:") | Gut Check removes `<think>…</think>` blocks and other reasoning, and throws away a reply that starts with planning notes, asking the model once more with a firmer instruction. If it still plans, you get the built-in advocate with a note saying so. Notes are never shown or saved. If it happens a lot, the model is a "thinking" model that works poorly here: pick a different one in Settings → Brains → AI model (`qwen3:8b` with thinking switched off, `llama3.1:8b` and `gemma3` models don't plan out loud). |
 | AI answer runs together / wrong speaker names | Smaller models sometimes break format in the multi-voice skins; try `qwen3:8b` or larger, or a single-voice skin. |
 | No reminder arrived | Settings → Reminders → Send a test reminder; check `TZ` and `REMINDER_HOUR`; check the logs. |
 | Out of memory / server sluggish | The model is too big for the RAM; switch to a smaller one in the app, or `OLLAMA_KEEP_ALIVE=2m` to unload it sooner. |
