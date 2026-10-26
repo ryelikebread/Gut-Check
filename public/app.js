@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   const C = window.GutCore, D = window.GutDevil;
-  const VERSION = "1.1.0";
+  const VERSION = "1.1.1";
   const DAY = C.DAY;
 
   /* ---------- tiny helpers ---------- */
@@ -727,7 +727,8 @@
     ["qwen3:14b", "9.3 GB", "strongest here; best with a GPU"],
   ];
   const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._\-\/:@]{0,199}$/;
-  const sameModel = (a, b) => a === b || a === b + ":latest" || a + ":latest" === b;
+  const modelKey = n => String(n).toLowerCase().replace(/:latest$/, ""); // gemma3:4B is gemma3:4b; "x" is "x:latest"
+  const sameModel = (a, b) => modelKey(a) === modelKey(b);
   const gb = n => n ? (n / 1e9).toFixed(n < 1e10 ? 1 : 0) + " GB" : "";
   async function jsonOrThrow(r) { const j = await r.json().catch(() => ({})); if (!r.ok && r.status !== 202) throw new Error(j.error || "status " + r.status); return j; }
 
@@ -748,11 +749,12 @@
       if (!r.ok) throw new Error("Ollama said " + r.status);
       const installed = ((await r.json()).models || []).map(m => ({ name: m.name, size: m.size || 0, params: (m.details && m.details.parameter_size) || "", quant: (m.details && m.details.quantization_level) || "" }));
       const ready = installed.some(m => sameModel(m.name, prefs.ollamaModel));
-      return { active: prefs.ollamaModel, installed, ready, state: ready ? "ready" : "not downloaded yet", pull: Object.assign({}, olPull, { ctrl: undefined }) };
+      return { url: olBase(), active: prefs.ollamaModel, installed, ready, state: ready ? "ready" : "not downloaded yet", pull: Object.assign({}, olPull, { ctrl: undefined }) };
     },
     async use(name) {
       const d = await this.list();
-      if (d.installed.some(m => sameModel(m.name, name))) { prefs.ollamaModel = name; savePrefs(); return this.list(); }
+      const have = d.installed.find(m => sameModel(m.name, name));
+      if (have) { prefs.ollamaModel = have.name; savePrefs(); return this.list(); }
       return this.pull(name, true);
     },
     async pull(name, activate) {
@@ -805,7 +807,9 @@
     function draw(d) {
       if (!el.isConnected) return;
       const p = d.pull || {};
-      $(".m-list", el).innerHTML = `<p class="small">In use: <b>${esc(d.active)}</b> · ${d.ready ? `<span style="color:var(--good)">ready</span>` : esc(d.state || "not ready")}</p>
+      const bundled = /^https?:\/\/ollama(:\d+)?\/?$/i.test(d.url || "");
+      $(".m-list", el).innerHTML = `${d.url ? `<p class="small muted">Connected to Ollama at <code>${esc(d.url)}</code>${bundled ? ` (the one bundled in Docker). To use an Ollama you already run on the server, see "Using an Ollama you already have" in the user guide.` : ""}</p>` : ""}
+        <p class="small">In use: <b>${esc(d.active)}</b> · ${d.ready ? `<span style="color:var(--good)">ready</span>` : esc(d.state || "not ready")}</p>
         ${d.installed.length ? `<div class="m-rows">${d.installed.map(m => {
           const on = sameModel(m.name, d.active);
           return `<div class="m-row${on ? " on" : ""}"><div><b>${esc(m.name)}</b><br><span class="muted small">${esc([gb(m.size), m.params, m.quant].filter(Boolean).join(" · "))}</span></div>

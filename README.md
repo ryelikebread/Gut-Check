@@ -24,7 +24,7 @@ cd gut-check
 cp .env.example .env        # optional: set SYNC_TOKEN, TZ, reminders, model
 docker compose up -d --build
 ```
-Open `http://your-server:8801`. The first start downloads the AI model (about 5 GB for `qwen3:8b`); the app works straight away and the devil's advocate uses its built-in version until the model is ready. NVIDIA GPU: add `-f docker-compose.gpu.yml`. No AI: `docker compose -f docker-compose.no-ai.yml up -d --build`.
+Open `http://your-server:8801`. The first start downloads the AI model (about 5 GB for `qwen3:8b`); the app works straight away and the devil's advocate uses its built-in version until the model is ready. NVIDIA GPU: add `-f docker-compose.gpu.yml`. Already run Ollama on the server: `docker compose -f docker-compose.host-ollama.yml up -d --build` (uses your models, see the user guide). No AI: `docker compose -f docker-compose.no-ai.yml up -d --build`.
 
 ### Without Docker
 ```sh
@@ -33,7 +33,7 @@ npm start          # Node 18+, no npm install needed; data goes to ./data
 
 ### Development
 ```sh
-npm test           # 21 tests: scoring, sync merge, skins, server, reminders, Ollama proxy, model picker
+npm test           # 22 tests: scoring, sync merge, skins, server, reminders, Ollama proxy, model picker
 python3 -m http.server 8801 -d public    # static copy, no server features
 ```
 
@@ -47,7 +47,7 @@ python3 -m http.server 8801 -d public    # static copy, no server features
 | `public/skins/*.js` | One file per devil's advocate skin (look, personality, wording). |
 | `server/server.js` | Server: sync API, backups, reminders, Ollama proxy. Node standard library only. |
 | `server/mailer.js` | Tiny SMTP client for reminder emails. |
-| `docker-compose*.yml`, `Dockerfile*`, `nginx.conf` | Server, GPU, HTTPS, no-AI and static setups. |
+| `docker-compose*.yml`, `Dockerfile*`, `nginx.conf` | Server, GPU, HTTPS, host-Ollama, no-AI and static setups. |
 | `.github/workflows/pages.yml` | Runs the tests, then publishes `public/` to GitHub Pages. |
 | `tests/` | `node --test` suites and a fake Ollama used by them. |
 

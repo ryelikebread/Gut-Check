@@ -1,0 +1,28 @@
+# Gut Check using an Ollama you already run on this server (installed outside Docker).
+# Your existing models show up in Settings → Brains → AI model, and models you download
+# from the app go into that same Ollama.
+#   docker compose -f docker-compose.host-ollama.yml up -d --build --remove-orphans
+# The app shares the server's network, so it reaches Ollama at 127.0.0.1:11434 with no
+# change to Ollama's own settings. Open http://your-server:8801 (or PORT from .env).
+# Ollama somewhere else? Set OLLAMA_URL in .env, e.g. OLLAMA_URL=http://192.168.1.20:11434
+# (that Ollama must listen on the network: OLLAMA_HOST=0.0.0.0).
+services:
+  gut-check:
+    build: .
+    image: gut-check
+    container_name: gut-check
+    restart: unless-stopped
+    network_mode: host        # "ports:" isn't used in this mode; the app listens on PORT directly
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: ${PORT:-8801}
+      OLLAMA_URL: ${OLLAMA_URL:-http://127.0.0.1:11434}
+      DEVIL_MODEL: ${DEVIL_MODEL:-qwen3:8b}
+      DEVIL_AUTO_PULL: ${DEVIL_AUTO_PULL:-0}   # don't download anything into your Ollama unless you ask in the app
+      TZ: ${TZ:-UTC}
+    volumes:
+      - gut-check-data:/data
+volumes:
+  gut-check-data:

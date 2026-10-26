@@ -205,7 +205,7 @@ Open `http://<server-ip>:8801`. On the very first start the server downloads the
 | `DEVIL_AUTO_PULL` | 1 | Download the model automatically if missing (retries every 5 minutes on failure). |
 | `DEVIL_TIMEOUT_SEC` | 300 | Give up on one answer after this long. |
 | `DEVIL_MAX_TOKENS` | 900 | Longest answer, in tokens. |
-| `OLLAMA_URL` | http://ollama:11434 | Where Ollama is. Point it at an Ollama you already run elsewhere if you like. |
+| `OLLAMA_URL` | http://ollama:11434 | Where Ollama is. The default is the Ollama bundled in Docker. With `docker-compose.host-ollama.yml` it is `http://127.0.0.1:11434` (your own). Point it at an Ollama on another machine if you like. |
 | `REMINDER_HOUR` | 9 | Hour of day (0–23) reminders go out. |
 | `REMINDER_REPEAT_DAYS` | 7 | Nudge again about an unreviewed entry after this many days. |
 | `NTFY_URL`, `NTFY_TOKEN` | | Phone push via ntfy. |
@@ -221,6 +221,7 @@ After changing `.env`: `docker compose up -d` (add `--build` after pulling new c
 |---|---|
 | `docker compose up -d --build` | Normal: app + local AI. |
 | `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build` | You have an NVIDIA GPU (needs the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)). Answers in seconds instead of a minute. |
+| `docker compose -f docker-compose.host-ollama.yml up -d --build --remove-orphans` | You already run Ollama on the server (outside Docker) and want to use it and its models. See [Using an Ollama you already have](#using-an-ollama-you-already-have). |
 | `docker compose -f docker-compose.no-ai.yml up -d --build` | No AI: sync, backups and reminders only; the built-in advocate still works. |
 | `DOMAIN=gutcheck.example.com docker compose -f docker-compose.https.yml up -d --build` | Public https with automatic certificates (Caddy). Needs a domain pointing at the server and ports 80/443 open. Set `SYNC_TOKEN`. |
 | `docker compose -f docker-compose.static.yml up -d --build` | Just the static web app (nginx), like GitHub Pages. |
@@ -264,6 +265,27 @@ The easy way is in the app: **Settings → Brains → AI model**, type or tap a 
 \* A full answer is 200–500 words. Times are rough guides for a recent 4–8 core CPU; a GPU makes any of these near-instant. The first answer after a while is slower because the model has to load (it stays loaded 15 minutes, `OLLAMA_KEEP_ALIVE`). Only one answer is generated at a time; others wait their turn.
 
 Models are kept in the `ollama-models` volume. Remove one you no longer use with **Remove** in the app, or `docker compose exec ollama ollama rm <name>`.
+
+### Using an Ollama you already have
+
+By default Gut Check starts its **own** Ollama in Docker, with its own empty model storage. Models you downloaded onto the server yourself (for example with `ollama pull gemma3:4b`) live in *your* Ollama and are invisible to the bundled one, so asking for them in the app makes it download them again. To use the Ollama you already run, switch to the host-Ollama setup:
+
+```sh
+cd gut-check && git pull
+docker compose down --remove-orphans                              # stop the bundled setup (your journal is kept)
+docker compose -f docker-compose.host-ollama.yml up -d --build    # start Gut Check using your Ollama
+```
+
+1. Make sure your Ollama is running on the server: `curl http://127.0.0.1:11434/api/tags` should list your models (`ollama list` shows the same).
+2. Run the three commands above. Your journal and settings are in the `gut-check-data` volume, which both setups share, so nothing is lost.
+3. Open Gut Check, go to **Settings → Brains → AI model**. The first line should read **Connected to Ollama at `http://127.0.0.1:11434`** and your models, such as `gemma3:4b`, are listed. Tap **Use** on one. No download happens. (If the line says `http://ollama:11434`, it's still on the bundled one: repeat step 2.)
+4. From then on you don't need `-f docker-compose.host-ollama.yml` typed out each time if you add `COMPOSE_FILE=docker-compose.host-ollama.yml` to `.env`; otherwise just keep using that `-f` option for `up`, `logs` and `down`.
+
+How it works: this setup runs the app on the server's own network (`network_mode: host`) so `127.0.0.1:11434` is your Ollama, and it needs no change to Ollama's settings. Because of that, the app listens directly on `PORT` (default 8801) and the `ports:` mapping isn't used. Automatic downloads are off in this setup (`DEVIL_AUTO_PULL=0`), so Gut Check only downloads a model when you press **Download and use**; those downloads go into your Ollama, next to the models you already have. Model names are matched ignoring capitalisation, so `gemma3:4B` finds `gemma3:4b`.
+
+- **Ollama on a different machine:** use the normal `docker-compose.yml` or this one and set `OLLAMA_URL=http://that-machine:11434` in `.env`; that Ollama must listen on the network (`OLLAMA_HOST=0.0.0.0`).
+- **No Docker at all:** `OLLAMA_URL=http://127.0.0.1:11434 npm start`.
+- **Using the bundled Ollama but want your existing models in it:** copy them in with `docker compose exec ollama ollama pull <name>` (re-downloads), or use the setup above instead.
 
 ### Hardware
 - **RAM** is what matters most: the table's figure is for the whole model plus Gut Check. If the server runs short, pick a smaller model.
@@ -392,6 +414,7 @@ See the table in the [README](../README.md#repo-layout). Each skin is one file i
 |---|---|
 | "Sync problem" badge | Tap it. Usually the server is off or unreachable, or the sync password is wrong (Settings → Server). |
 | GitHub Pages copy can't connect to the server | The server address must be https, and the server's `.env` needs `CORS_ORIGIN=https://ryelikebread.github.io`. |
+| Picker wants to download a model that's already on my server | Gut Check is talking to the bundled Ollama, not yours. The picker's "Connected to Ollama at …" line shows which: see [Using an Ollama you already have](#using-an-ollama-you-already-have). |
 | Devil's advocate always says "Built-in advocate" | Settings → Brains shows why. On the server: `docker compose logs gut-check` and `docker compose exec ollama ollama list`. The model may still be downloading. |
 | "model download failed" | The server couldn't reach ollama.com, or the model name is wrong (check it on ollama.com/library). The starting model is retried every 5 minutes; a model you picked in the app can be retried with **Download and use**. Or pull it by hand: `docker compose exec ollama ollama pull qwen3:8b`. |
 | Picked a model that's too big | Settings → Brains → AI model → **Use** on a smaller one, then **Remove** the big one. |
@@ -412,7 +435,7 @@ All under `/api/`, JSON. If `SYNC_TOKEN` is set, send `Authorization: Bearer <to
 | `GET status` | Health, version, whether a password is needed, sync revision, backups, AI model state, reminder channels. |
 | `GET state` | The journal `{rev, savedAt, state}`. |
 | `PUT state` | `{baseRev, state}`; 409 with the current copy if `baseRev` is stale. |
-| `GET models` | `{active, default, ready, state, installed:[{name, size, params, quant}], pull:{model, status, pct, running, activate, error}}`. |
+| `GET models` | `{url, active, default, ready, state, installed:[{name, size, params, quant}], pull:{model, status, pct, running, activate, error}}`. |
 | `POST models/active` | `{model}`: switch to it; if it isn't downloaded, starts the download (202) and switches when it's done. |
 | `POST models/pull` | `{model, activate?}`: download only (or switch after, with `activate: true`). 409 if another download is running. |
 | `POST models/cancel` | Stops the running download. |

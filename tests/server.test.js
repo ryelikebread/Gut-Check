@@ -163,6 +163,20 @@ test("the model can be changed from the app, and the choice is kept", async () =
   } finally { await s.stop().catch(() => {}); if (s2) await s2.stop(); ol.close(); }
 });
 
+test("a model you already have is used as-is, whatever its capitalisation, with no download", async () => {
+  const ol = await fakeOllama.start({ models: ["gemma3:4b", "llama3.1:8b"] });
+  const s = await startServer({ OLLAMA_URL: ol.url, DEVIL_AUTO_PULL: "0" });
+  try {
+    let m = await (await fetch(s.base + "/api/models")).json();
+    assert.equal(m.url, ol.url, "the picker can say which Ollama it is connected to");
+    const r = await fetch(s.base + "/api/models/active", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "Gemma3:4B" }) });
+    assert.equal(r.status, 200, "switches straight away, nothing to download");
+    m = await r.json();
+    assert.equal(m.active, "gemma3:4b"); assert.equal(m.ready, true);
+    assert.ok(!ol.calls.some(c => c.path === "/api/pull"), "no download was started");
+  } finally { await s.stop(); ol.close(); }
+});
+
 test("a model download shows progress, blocks a second one and can be cancelled", async () => {
   const ol = await fakeOllama.start({ models: ["qwen3:8b"], pullSteps: 100, pullStepMs: 40 });
   const s = await startServer({ OLLAMA_URL: ol.url });
