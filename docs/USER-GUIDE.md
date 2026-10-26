@@ -287,6 +287,27 @@ How it works: this setup runs the app on the server's own network (`network_mode
 - **No Docker at all:** `OLLAMA_URL=http://127.0.0.1:11434 npm start`.
 - **Using the bundled Ollama but want your existing models in it:** copy them in with `docker compose exec ollama ollama pull <name>` (re-downloads), or use the setup above instead.
 
+### Removing downloaded models
+
+**In the app (easiest):** Settings → Brains → AI model, then **Remove** next to the model. You can't remove the one in use, so tap **Use** on another first. This deletes it from whichever Ollama Gut Check is connected to (the first line of the box says which).
+
+**From the command line, bundled Ollama (the normal setup):** the Ollama service is called `ollama` (container `gut-check-ollama`). Run these in the `gut-check` folder on the server:
+```sh
+docker compose exec ollama ollama list            # what's downloaded, with sizes
+docker compose exec ollama ollama rm gemma3:4b    # remove one (use the name from the list)
+```
+
+**From the command line, your own Ollama** (the host-Ollama setup): just `ollama list` and `ollama rm gemma3:4b` on the server. Careful: that Ollama is shared, so this also removes the model for anything else you use it for.
+
+**Freeing all the space at once (bundled Ollama only):** all models downloaded through Gut Check live in the `ollama-models` Docker volume. To delete every one of them:
+```sh
+docker compose down                       # stop (your journal is kept)
+docker volume ls | grep ollama-models     # shows the exact name, usually gut-check_ollama-models
+docker volume rm gut-check_ollama-models
+docker compose up -d                      # starts again; downloads the model again if you still want AI
+```
+Your journal is in a different volume (`gut-check_gut-check-data`) and is not touched. Never run `docker compose down -v`: the `-v` also deletes the journal volume. To check what the volumes use: `docker system df -v`.
+
 ### Hardware
 - **RAM** is what matters most: the table's figure is for the whole model plus Gut Check. If the server runs short, pick a smaller model.
 - **GPU** (optional): NVIDIA with the container toolkit, using `docker-compose.gpu.yml`. AMD GPUs work with the `ollama/ollama:rocm` image (`OLLAMA_IMAGE=ollama/ollama:rocm` and pass `/dev/kfd` and `/dev/dri` to the ollama service; see Ollama's docs).
@@ -417,6 +438,7 @@ See the table in the [README](../README.md#repo-layout). Each skin is one file i
 | Picker wants to download a model that's already on my server | Gut Check is talking to the bundled Ollama, not yours. The picker's "Connected to Ollama at …" line shows which: see [Using an Ollama you already have](#using-an-ollama-you-already-have). |
 | Devil's advocate always says "Built-in advocate" | Settings → Brains shows why. On the server: `docker compose logs gut-check` and `docker compose exec ollama ollama list`. The model may still be downloading. |
 | "model download failed" | The server couldn't reach ollama.com, or the model name is wrong (check it on ollama.com/library). The starting model is retried every 5 minutes; a model you picked in the app can be retried with **Download and use**. Or pull it by hand: `docker compose exec ollama ollama pull qwen3:8b`. |
+| Disk is full of models | Remove ones you don't use, in the app or from the command line: see [Removing downloaded models](#removing-downloaded-models). |
 | Picked a model that's too big | Settings → Brains → AI model → **Use** on a smaller one, then **Remove** the big one. |
 | Answers are slow | Switch to a smaller model (`qwen3:4b`) in Settings → Brains → AI model, or use a GPU. The first answer after a pause includes loading the model. |
 | Answers time out | Raise `DEVIL_TIMEOUT_SEC`, or use a smaller model. |
