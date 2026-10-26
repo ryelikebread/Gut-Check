@@ -133,7 +133,11 @@ const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._\-\/:@]{0,199}$/;
 let settings = readJson(SETTINGS, {}, d => d && typeof d === "object" && !Array.isArray(d));
 if (settings.model && !MODEL_RE.test(settings.model)) settings.model = "";
 const activeModel = () => settings.model || MODEL;
-const sameModel = (a, b) => a === b || a === b + ":latest" || a + ":latest" === b;
+/* Ollama model names aren't case-sensitive in practice (gemma3:4B and gemma3:4b are the same model),
+   and "name" is the same as "name:latest". */
+const modelKey = n => String(n).toLowerCase().replace(/:latest$/, "");
+const sameModel = (a, b) => modelKey(a) === modelKey(b);
+const installedAs = name => { const m = installed.find(x => sameModel(x.name, name)); return m ? m.name : null; }; // the spelling Ollama itself uses
 const devil = { enabled: !!OLLAMA, model: activeModel(), ready: false, state: OLLAMA ? "checking" : "not configured", busy: 0 };
 let installed = [], lastPullAt = 0;
 const pull = { model: "", status: "", pct: 0, error: "", activate: false, running: false, startedAt: 0, finishedAt: 0, ctrl: null };
@@ -212,7 +216,7 @@ function startPull(name, { activate = false, auto = false } = {}) {
 }
 async function modelsApi(req, res, p) {
   if (!OLLAMA) return send(res, 503, { error: "No local model is configured on the server (OLLAMA_URL is empty)" });
-  const list = () => ({ active: activeModel(), default: MODEL, ready: devil.ready, state: devil.state, autoPull: AUTO_PULL, installed, pull: pullInfo() });
+  const list = () => ({ url: OLLAMA, active: activeModel(), default: MODEL, ready: devil.ready, state: devil.state, autoPull: AUTO_PULL, installed, pull: pullInfo() });
   if (p === "/api/models" && req.method === "GET") { await checkOllama(); return send(res, 200, list()); }
   if (req.method !== "POST") return send(res, 405, { error: "method not allowed" });
   const body = await jsonBody(req, res, 4096); if (body === undefined) return;
@@ -222,7 +226,7 @@ async function modelsApi(req, res, p) {
   if (p === "/api/models/pull" || p === "/api/models/active") {
     await checkOllama();
     const activate = p === "/api/models/active" || !!body.activate;
-    if (p === "/api/models/active" && installed.some(m => sameModel(m.name, name))) { setActiveModel(name); await checkOllama(); return send(res, 200, list()); }
+    if (p === "/api/models/active" && installedAs(name)) { setActiveModel(installedAs(name)); await checkOllama(); return send(res, 200, list()); }
     if (pull.running) {
       if (!sameModel(pull.model, name)) return send(res, 409, { error: `Already downloading ${pull.model}. Wait for it to finish or cancel it first.`, ...list() });
       if (activate) pull.activate = true;

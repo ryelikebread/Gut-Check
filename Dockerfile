@@ -10,5 +10,5 @@ RUN mkdir -p /data && chown -R node:node /data
 USER node
 VOLUME /data
 EXPOSE 8801
-HEALTHCHECK --interval=30s --timeout=5s CMD wget -q --spider http://127.0.0.1:8801/api/status || exit 1
+HEALTHCHECK --interval=30s --timeout=5s CMD wget -q --spider "http://127.0.0.1:${PORT:-8801}/api/status" || exit 1
 CMD ["node", "server/server.js"]
