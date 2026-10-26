@@ -12,7 +12,7 @@ Verify how good your gut actually is.
 
 | | **GitHub Pages** | **Your Ubuntu server (Docker)** |
 |---|---|---|
-| Address | https://ryelikebread.github.io/gut-check/ | `http://your-server:8080` |
+| Address | https://ryelikebread.github.io/gut-check/ | `http://your-server:8801` |
 | Data | In each browser only (backup/restore by file) | On the server, synced across devices, with automatic backups |
 | Review reminders | In the app, plus calendar files | Also phone push (ntfy), email or chat webhook, and a live calendar feed |
 | Devil's advocate | Built-in advocate, or your server / your own Ollama | Local AI model (Ollama, default `qwen3:8b`), nothing leaves the machine |
@@ -24,7 +24,7 @@ cd gut-check
 cp .env.example .env        # optional: set SYNC_TOKEN, TZ, reminders, model
 docker compose up -d --build
 ```
-Open `http://your-server:8080`. The first start downloads the AI model (about 5 GB for `qwen3:8b`); the app works straight away and the devil's advocate uses its built-in version until the model is ready. NVIDIA GPU: add `-f docker-compose.gpu.yml`. No AI: `docker compose -f docker-compose.no-ai.yml up -d --build`.
+Open `http://your-server:8801`. The first start downloads the AI model (about 5 GB for `qwen3:8b`); the app works straight away and the devil's advocate uses its built-in version until the model is ready. NVIDIA GPU: add `-f docker-compose.gpu.yml`. No AI: `docker compose -f docker-compose.no-ai.yml up -d --build`.
 
 ### Without Docker
 ```sh
@@ -34,7 +34,7 @@ npm start          # Node 18+, no npm install needed; data goes to ./data
 ### Development
 ```sh
 npm test           # 19 tests: scoring, sync merge, skins, server, reminders, Ollama proxy
-python3 -m http.server 8080 -d public    # static copy, no server features
+python3 -m http.server 8801 -d public    # static copy, no server features
 ```
 
 ## Repo layout

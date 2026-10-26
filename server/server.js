@@ -4,7 +4,7 @@
    No npm dependencies; needs Node 18+.
 
    Environment (all optional):
-     PORT                     port to listen on (default 8080)
+     PORT                     port to listen on (default 8801)
      DATA_DIR                 where state.json, reminders.json and backups/ live (default /data)
      SYNC_TOKEN               shared password; if set, the app asks for it once
      CORS_ORIGIN              comma-separated web origins allowed to call the API from another site,
@@ -36,7 +36,7 @@ const { sendMail } = require("./mailer.js");
 const VERSION = require("../package.json").version;
 
 const env = process.env;
-const PORT = +env.PORT || 8080;
+const PORT = +env.PORT || 8801;
 const PUBLIC = path.resolve(env.PUBLIC_DIR || path.join(__dirname, "..", "public"));
 const DATA = path.resolve(env.DATA_DIR || "/data");
 const TOKEN = env.SYNC_TOKEN || "";

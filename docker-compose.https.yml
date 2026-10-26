@@ -11,6 +11,7 @@ services:
       - path: .env
         required: false
     environment:
+      PORT: "8801"            # inside the container; set PORT in .env to change the host port
       OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       DEVIL_MODEL: ${DEVIL_MODEL:-qwen3:8b}
       APP_URL: https://${DOMAIN}
@@ -36,7 +37,7 @@ services:
       - "443:443"
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN to your domain name}
-    command: caddy reverse-proxy --from ${DOMAIN} --to gut-check:8080
+    command: caddy reverse-proxy --from ${DOMAIN} --to gut-check:8801
     volumes:
       - caddy_data:/data
 volumes:

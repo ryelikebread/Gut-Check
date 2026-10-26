@@ -6,7 +6,7 @@
   "license": "MIT",
   "scripts": {
     "start": "PUBLIC_DIR=public DATA_DIR=./data node server/server.js",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test --test-timeout=60000 tests/*.test.js"
   },
   "engines": { "node": ">=18" }
 }

@@ -5,6 +5,10 @@ const { spawn } = require("child_process");
 const fs = require("fs"), os = require("os"), path = require("path"), http = require("http"), net = require("net");
 const fakeOllama = require("./fake-ollama.js");
 
+/* Every server started by these tests, so none is left running (and holding the test run open) if a test fails. */
+const children = new Set();
+test.after(() => { for (const c of children) c.kill("SIGKILL"); });
+
 function freePort() { return new Promise(r => { const s = net.createServer().listen(0, () => { const p = s.address().port; s.close(() => r(p)); }); }); }
 
 /* Records anything POSTed to it (stands in for ntfy and a chat webhook). */
@@ -40,6 +44,7 @@ async function startServer(env) {
   const port = await freePort();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gutcheck-"));
   const child = spawn(process.execPath, [path.join(__dirname, "..", "server", "server.js")], { env: Object.assign({}, process.env, { PORT: port, DATA_DIR: dir, REMINDER_HOUR: "0" }, env), stdio: ["ignore", "pipe", "pipe"] });
+  children.add(child); child.on("exit", () => children.delete(child));
   let out = ""; child.stdout.on("data", d => out += d); child.stderr.on("data", d => out += d);
   const base = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 100; i++) { try { await fetch(base + "/api/status"); break; } catch (e) { await new Promise(r => setTimeout(r, 50)); } }
