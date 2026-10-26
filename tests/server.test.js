@@ -48,7 +48,7 @@ async function startServer(env) {
   let out = ""; child.stdout.on("data", d => out += d); child.stderr.on("data", d => out += d);
   const base = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 100; i++) { try { await fetch(base + "/api/status"); break; } catch (e) { await new Promise(r => setTimeout(r, 50)); } }
-  return { base, dir, child, log: () => out, stop: () => new Promise(r => { child.on("exit", r); child.kill("SIGTERM"); }) };
+  return { base, dir, child, log: () => out, stop: () => new Promise(r => { if (child.exitCode !== null || child.signalCode) return r(); child.on("exit", r); child.kill("SIGTERM"); }) };
 }
 const H = t => ({ "Content-Type": "application/json", Authorization: "Bearer " + t });
 const entry = (o = {}) => Object.assign({ id: "e1", kind: "decision", title: "Take the job", confidence: 80, createdAt: Date.now() - 1e9, updatedAt: Date.now(), reviewAt: Date.now() - 1000, status: "open" }, o);
@@ -127,6 +127,56 @@ test("a failed model download is retried slowly, not in a loop", async () => {
     assert.equal(ol.calls.filter(c => c.path === "/api/pull").length, 1);
     const st = await (await fetch(s.base + "/api/status")).json();
     assert.match(st.devil.state, /download failed/);
+  } finally { await s.stop(); ol.close(); }
+});
+
+test("the model can be changed from the app, and the choice is kept", async () => {
+  const ol = await fakeOllama.start({ models: ["qwen3:8b"], reply: "Pip-Devil: Hmm.\nPip-Angel: Fair." });
+  const s = await startServer({ SYNC_TOKEN: "pw", OLLAMA_URL: ol.url, DEVIL_MODEL: "qwen3:8b" });
+  const post = (p, body) => fetch(s.base + "/api/models/" + p, { method: "POST", headers: H("pw"), body: JSON.stringify(body) });
+  const get = async () => (await fetch(s.base + "/api/models", { headers: H("pw") })).json();
+  let s2;
+  try {
+    assert.equal((await fetch(s.base + "/api/models")).status, 401);
+    let m = await get();
+    assert.equal(m.active, "qwen3:8b"); assert.equal(m.default, "qwen3:8b");
+    assert.deepEqual(m.installed.map(x => x.name), ["qwen3:8b"]);
+    assert.equal(m.installed[0].params, "1B");
+    assert.equal((await post("active", { model: "bad name; rm -rf" })).status, 400);
+    const r = await post("active", { model: "tiny:1b" });
+    assert.equal(r.status, 202, "not installed yet, so it downloads first");
+    for (let i = 0; i < 50 && m.active !== "tiny:1b"; i++) { await new Promise(r => setTimeout(r, 100)); m = await get(); }
+    assert.equal(m.active, "tiny:1b"); assert.equal(m.ready, true); assert.equal(m.pull.status, "success");
+    assert.equal((await (await fetch(s.base + "/api/status")).json()).devil.model, "tiny:1b");
+    const chat = await fetch(s.base + "/api/devil", { method: "POST", headers: H("pw"), body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }) });
+    assert.match(await chat.text(), /"model":"tiny:1b"/);
+    assert.equal(ol.calls.filter(c => c.path === "/api/chat").pop().body.model, "tiny:1b");
+    assert.equal((await post("delete", { model: "tiny:1b" })).status, 400, "can't remove the model in use");
+    m = await (await post("delete", { model: "qwen3:8b" })).json();
+    assert.deepEqual(m.installed.map(x => x.name), ["tiny:1b"]);
+    m = await (await post("active", { model: "tiny:1b" })).json();
+    assert.equal(m.active, "tiny:1b");
+    await s.stop();
+    s2 = await startServer({ SYNC_TOKEN: "pw", OLLAMA_URL: ol.url, DEVIL_MODEL: "qwen3:8b", DATA_DIR: s.dir });
+    const st = await (await fetch(s2.base + "/api/status")).json();
+    assert.equal(st.devil.model, "tiny:1b", "choice survives a restart");
+  } finally { await s.stop().catch(() => {}); if (s2) await s2.stop(); ol.close(); }
+});
+
+test("a model download shows progress, blocks a second one and can be cancelled", async () => {
+  const ol = await fakeOllama.start({ models: ["qwen3:8b"], pullSteps: 100, pullStepMs: 40 });
+  const s = await startServer({ OLLAMA_URL: ol.url });
+  const post = (p, body) => fetch(s.base + "/api/models/" + p, { method: "POST", headers: H(""), body: JSON.stringify(body) });
+  try {
+    assert.equal((await post("pull", { model: "big:70b" })).status, 202);
+    await new Promise(r => setTimeout(r, 400));
+    let m = await (await fetch(s.base + "/api/models")).json();
+    assert.equal(m.pull.running, true); assert.ok(m.pull.pct > 0 && m.pull.pct < 100, "pct " + m.pull.pct);
+    assert.equal((await post("pull", { model: "other:1b" })).status, 409);
+    m = await (await post("cancel", {})).json();
+    for (let i = 0; i < 30 && m.pull.running; i++) { await new Promise(r => setTimeout(r, 50)); m = await (await fetch(s.base + "/api/models")).json(); }
+    assert.equal(m.pull.status, "cancelled"); assert.equal(m.active, "qwen3:8b"); assert.equal(m.ready, true);
+    assert.ok(!m.installed.some(x => x.name === "big:70b"));
   } finally { await s.stop(); ol.close(); }
 });
 

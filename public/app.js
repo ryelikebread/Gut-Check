@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   const C = window.GutCore, D = window.GutDevil;
-  const VERSION = "1.0.0";
+  const VERSION = "1.1.0";
   const DAY = C.DAY;
 
   /* ---------- tiny helpers ---------- */
@@ -550,30 +550,57 @@
     return { model: prefs.ollamaModel };
   }
 
-  function turnHTML(skin, t, i, all) {
+  /* The stage is built once and then patched in place, so streaming text doesn't replay every bubble's
+     entrance animation or restart the sprite (that looked like flashing). Only new bubbles animate. */
+  function turnParts(skin, t, i, all) {
     const v = skin.voices.find(x => x.id === t.voice) || skin.voices[0];
     const right = skin.stage === "pip" && v.id === "devil";
     const ruling = skin.stage === "tribunal" && i === all.length - 1 && /^ruling/i.test(t.text);
-    return `<div class="turn v-${esc(v.id)}${right ? " right" : ""}${ruling ? " ruling" : ""}"><div class="av">${skin.stage === "tribunal" ? "" : v.avatar}</div>
-      <div class="bubble"><span class="who" style="color:${esc(v.color)}">${esc(v.name)}</span>${esc(t.text)}</div></div>`;
+    return { cls: `turn v-${v.id}${right ? " right" : ""}${ruling ? " ruling" : ""}`, av: skin.stage === "tribunal" ? "" : v.avatar,
+      bubble: `<span class="who" style="color:${esc(v.color)}">${esc(v.name)}</span>${esc(t.text)}` };
   }
-  function stageHTML(skin, turns, o = {}) {
+  function srcText(o) {
     const srcLabel = o.source === "offline" ? "Built-in advocate" : o.source ? `Local model${o.model ? " · " + o.model : ""}` : "";
-    const speaking = turns.length ? turns[turns.length - 1].voice : null;
+    return srcLabel + (o.at ? " · " + fmtDate(o.at) : "") + (o.confidence ? ` · you were ${o.confidence}% sure` : "");
+  }
+  function stageShell(skin) {
     let top = "";
     if (skin.stage === "pip") top = `<div class="pip-wrap">${skin.sprite}</div>`;
-    if (skin.stage === "tribunal") top = `<div class="bench">${skin.voices.map(v => `<div class="judge${!o.thinking && v.id === speaking ? " speaking" : ""}">${v.avatar}<span>${esc(v.name)}</span></div>`).join("")}</div>`;
-    return `<div class="devil stage-${esc(skin.stage || "single")}${o.thinking ? " thinking" : ""}">
-      <div class="head"><h3>${esc(skin.name)}</h3><span class="src">${esc(srcLabel)}${o.at ? " · " + fmtDate(o.at) : ""}${o.confidence ? ` · you were ${o.confidence}% sure` : ""}</span></div>
+    if (skin.stage === "tribunal") top = `<div class="bench">${skin.voices.map(v => `<div class="judge" data-v="${esc(v.id)}">${v.avatar}<span>${esc(v.name)}</span></div>`).join("")}</div>`;
+    return `<div class="devil stage-${esc(skin.stage || "single")}" data-skin="${esc(skin.id)}">
+      <div class="head"><h3>${esc(skin.name)}</h3><span class="src"></span></div>
       ${top}
-      ${o.note ? `<div class="notice warn small">${esc(o.note)}</div>` : ""}
-      ${turns.map((t, i, a) => turnHTML(skin, t, i, a)).join("")}
-      ${o.thinking ? `<div class="turn"><div class="av"></div><div class="bubble"><span class="muted small">${esc(skin.waiting || "Thinking…")}</span> <span class="typing"><i></i><i></i><i></i></span></div></div>` : ""}
+      <div class="notice warn small stage-note" hidden></div>
+      <div class="turns"></div>
+      <div class="turn waiting" hidden><div class="av"></div><div class="bubble"><span class="muted small">${esc(skin.waiting || "Thinking…")}</span> <span class="typing"><i></i><i></i><i></i></span></div></div>
     </div>`;
+  }
+  function renderStage(box, skin, turns, o = {}) {
+    let st = box.firstElementChild;
+    if (!st || !st.classList.contains("devil") || st.dataset.skin !== skin.id) { box.innerHTML = stageShell(skin); st = box.firstElementChild; }
+    st.classList.toggle("thinking", !!o.thinking);
+    if (o.still) st.classList.add("still"); // a saved reply: show it as-is, no entrance animations
+    const src = st.querySelector(".src"), txt = srcText(o);
+    if (src.textContent !== txt) src.textContent = txt;
+    const speaking = turns.length ? turns[turns.length - 1].voice : null;
+    st.querySelectorAll(".judge").forEach(j => j.classList.toggle("speaking", !o.thinking && j.dataset.v === speaking));
+    const note = st.querySelector(".stage-note");
+    note.hidden = !o.note; if (note.textContent !== (o.note || "")) note.textContent = o.note || "";
+    const list = st.querySelector(".turns");
+    turns.forEach((t, i, all) => {
+      const p = turnParts(skin, t, i, all);
+      let el = list.children[i];
+      if (!el) { el = document.createElement("div"); el.innerHTML = '<div class="av"></div><div class="bubble"></div>'; list.appendChild(el); }
+      if (el.className !== p.cls) el.className = p.cls;
+      if (el._av !== p.av) { el._av = p.av; el.firstElementChild.innerHTML = p.av; }
+      if (el._bubble !== p.bubble) { el._bubble = p.bubble; el.lastElementChild.innerHTML = p.bubble; }
+    });
+    while (list.children.length > turns.length) list.lastElementChild.remove();
+    st.querySelector(".turn.waiting").hidden = !o.thinking;
   }
   function showDevilResult(box, res) {
     const skin = D.get(res.skin);
-    box.innerHTML = stageHTML(skin, res.turns || [], { source: res.source, model: res.model, at: res.at, confidence: res.confidence });
+    renderStage(box, skin, res.turns || [], { source: res.source, model: res.model, at: res.at, confidence: res.confidence, still: true });
   }
 
   /* Runs the advocate for an entry, drawing into box. Resolves with the stored result, or null. */
@@ -582,7 +609,8 @@
     const ctx = { track: C.hitRateNear(state, entry.confidence) };
     const info = engineInfo();
     let turns = null, source = "offline", model = "", note = info.why ? `Using the built-in advocate because ${info.why}.` : "";
-    box.innerHTML = stageHTML(skin, [], { thinking: true });
+    box.innerHTML = "";
+    renderStage(box, skin, [], { thinking: true });
     box.scrollIntoView({ block: "nearest", behavior: reduceMotion() ? "auto" : "smooth" });
     if (info.engine === "server" || info.engine === "ollama") {
       let text = "", last = 0;
@@ -592,7 +620,7 @@
         const msgs = D.messages(entry, skin, ctx);
         const onDelta = d => {
           text += d;
-          if (Date.now() - last > 250) { last = Date.now(); box.innerHTML = stageHTML(skin, D.parseTurns(text, skin), { thinking: true, source: info.engine, model: info.model }); }
+          if (Date.now() - last > 250) { last = Date.now(); renderStage(box, skin, D.parseTurns(text, skin), { thinking: true, source: info.engine, model: info.model }); }
         };
         const r = info.engine === "server" ? await streamServer(msgs, onDelta, ctrl.signal) : await streamOllama(msgs, onDelta, ctrl.signal);
         turns = D.parseTurns(text, skin); model = r.model || info.model || ""; source = info.engine;
@@ -604,10 +632,10 @@
     }
     if (!turns) {
       turns = D.offline(entry, skin, ctx); source = "offline"; model = "";
-      if (!reduceMotion()) for (let i = 1; i < turns.length; i++) { box.innerHTML = stageHTML(skin, turns.slice(0, i), { thinking: true, note }); await sleep(650 + Math.min(900, turns[i - 1].text.length * 6)); }
+      if (!reduceMotion()) for (let i = 1; i < turns.length; i++) { renderStage(box, skin, turns.slice(0, i), { thinking: true, note }); await sleep(650 + Math.min(900, turns[i - 1].text.length * 6)); }
     }
     const res = { at: Date.now(), skin: skin.id, source, model, confidence: entry.confidence, turns };
-    box.innerHTML = stageHTML(skin, turns, { source, model, at: res.at, confidence: entry.confidence, note });
+    renderStage(box, skin, turns, { source, model, at: res.at, confidence: entry.confidence, note });
     return res;
   }
 
@@ -686,6 +714,133 @@
   /* ---------- Settings ---------- */
   const SAMPLE = { id: "sample", kind: "decision", title: "Take the job offer in Denver", details: "Current job is stable but flat. The new role pays more and leads a team, but means moving away from friends.", options: "Stay and ask for a raise; keep looking", reasoning: "Better pay and more room to grow", expectation: "I'll be happier and earning 20% more within a year", confidence: 85, stakes: 3, tags: [], reviewAt: Date.now() + 180 * DAY, createdAt: Date.now(), status: "open", devil: [] };
 
+  /* ---------- AI model picker (Settings) ---------- */
+  /* Models that suit the devil's advocate, smallest to largest. Sizes are approximate downloads. */
+  const SUGGESTED_MODELS = [
+    ["qwen3:1.7b", "1.4 GB", "for small machines; weaker arguments"],
+    ["llama3.2:3b", "2.0 GB", "small, quick and plain-spoken"],
+    ["qwen3:4b", "2.5 GB", "faster on a server without a GPU"],
+    ["gemma3:4b", "3.3 GB", "writes well for its size"],
+    ["qwen3:8b", "5.2 GB", "the default: best all-round, wants 8 GB+ RAM"],
+    ["llama3.1:8b", "4.9 GB", "warmer, chattier style; 8 GB RAM"],
+    ["gemma3:12b", "8.1 GB", "sharper; wants 16 GB RAM or a GPU"],
+    ["qwen3:14b", "9.3 GB", "strongest here; best with a GPU"],
+  ];
+  const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._\-\/:@]{0,199}$/;
+  const sameModel = (a, b) => a === b || a === b + ":latest" || a + ":latest" === b;
+  const gb = n => n ? (n / 1e9).toFixed(n < 1e10 ? 1 : 0) + " GB" : "";
+  async function jsonOrThrow(r) { const j = await r.json().catch(() => ({})); if (!r.ok && r.status !== 202) throw new Error(j.error || "status " + r.status); return j; }
+
+  /* Your Gut Check server: it downloads in the background and remembers the choice for every device. */
+  const serverModels = {
+    list: async () => jsonOrThrow(await api("models")),
+    use: async name => jsonOrThrow(await api("models/active", { method: "POST", body: JSON.stringify({ model: name }) })),
+    pull: async (name, activate) => jsonOrThrow(await api("models/pull", { method: "POST", body: JSON.stringify({ model: name, activate }) })),
+    cancel: async () => jsonOrThrow(await api("models/cancel", { method: "POST", body: "{}" })),
+    remove: async name => jsonOrThrow(await api("models/delete", { method: "POST", body: JSON.stringify({ model: name }) })),
+  };
+  /* Ollama talked to straight from this browser: the download runs while this page stays open. */
+  const olPull = { model: "", status: "", pct: 0, error: "", activate: false, running: false, ctrl: null };
+  const olBase = () => prefs.ollamaUrl.replace(/\/+$/, "");
+  const ollamaModels = {
+    async list() {
+      const r = await fetch(olBase() + "/api/tags", { cache: "no-store" });
+      if (!r.ok) throw new Error("Ollama said " + r.status);
+      const installed = ((await r.json()).models || []).map(m => ({ name: m.name, size: m.size || 0, params: (m.details && m.details.parameter_size) || "", quant: (m.details && m.details.quantization_level) || "" }));
+      const ready = installed.some(m => sameModel(m.name, prefs.ollamaModel));
+      return { active: prefs.ollamaModel, installed, ready, state: ready ? "ready" : "not downloaded yet", pull: Object.assign({}, olPull, { ctrl: undefined }) };
+    },
+    async use(name) {
+      const d = await this.list();
+      if (d.installed.some(m => sameModel(m.name, name))) { prefs.ollamaModel = name; savePrefs(); return this.list(); }
+      return this.pull(name, true);
+    },
+    async pull(name, activate) {
+      if (olPull.running) { if (!sameModel(olPull.model, name)) throw new Error(`Already downloading ${olPull.model}. Wait for it or cancel it first.`); olPull.activate = olPull.activate || activate; return this.list(); }
+      Object.assign(olPull, { model: name, status: "starting", pct: 0, error: "", activate, running: true, ctrl: new AbortController() });
+      (async () => {
+        try {
+          const r = await fetch(olBase() + "/api/pull", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: name, stream: true }), signal: olPull.ctrl.signal });
+          if (!r.ok) throw new Error("Ollama said " + r.status);
+          let ok = false;
+          await readNDJSON(r, o => {
+            if (o.error) throw new Error(o.error);
+            if (o.status) olPull.status = o.status;
+            if (o.status === "success") ok = true;
+            if (o.total && o.completed) olPull.pct = Math.min(100, Math.floor(o.completed / o.total * 100));
+          });
+          if (!ok) throw new Error("the download ended early");
+          Object.assign(olPull, { running: false, status: "success", pct: 100, finishedAt: Date.now() });
+          if (olPull.activate) { prefs.ollamaModel = name; savePrefs(); }
+        } catch (e) {
+          Object.assign(olPull, { running: false, status: olPull.ctrl.signal.aborted ? "cancelled" : "failed", error: olPull.ctrl.signal.aborted ? "" : e.message, finishedAt: Date.now() });
+        }
+      })();
+      return this.list();
+    },
+    async cancel() { if (olPull.running) olPull.ctrl.abort(); return this.list(); },
+    async remove(name) {
+      if (sameModel(name, prefs.ollamaModel)) throw new Error("That's the model in use. Switch to another one before removing it.");
+      const r = await fetch(olBase() + "/api/delete", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: name }) });
+      if (!r.ok) throw new Error("Ollama couldn't remove it (" + r.status + ")");
+      return this.list();
+    },
+  };
+
+  /* Draws the picker into el. Only the list and progress parts are redrawn while a download runs,
+     so what you're typing in the box isn't lost. */
+  function modelPicker(el, A, label) {
+    el.innerHTML = `<h3 style="margin-top:18px">AI model <span class="muted small">on ${esc(label)}</span></h3>
+      <div class="m-list"><p class="small muted">Looking for models…</p></div>
+      <div class="m-progress"></div>
+      <label class="f" style="margin-top:10px"><span>Get another model</span>
+        <div class="row nowrap"><input type="text" class="m-name" list="m-suggest" placeholder="e.g. qwen3:4b" autocapitalize="off" spellcheck="false"><button class="btn small primary m-get" type="button">Download and use</button></div></label>
+      <datalist id="m-suggest">${SUGGESTED_MODELS.map(m => `<option value="${esc(m[0])}">${esc(m[1] + ", " + m[2])}</option>`).join("")}</datalist>
+      <div class="m-suggest">${SUGGESTED_MODELS.map(m => `<button type="button" class="m-pick" data-m="${esc(m[0])}"><b>${esc(m[0])}</b> <span class="muted">${esc(m[1])} · ${esc(m[2])}</span></button>`).join("")}</div>
+      <small class="hint">Any model from <a href="https://ollama.com/library" target="_blank" rel="noopener">ollama.com/library</a> works; type its name and tag. The current model keeps answering until the new one has finished downloading.</small>`;
+    let timer = null;
+    const input = $(".m-name", el);
+    const busy = (b, on) => { b.disabled = on; };
+    const act = async (fn, b) => { if (b) busy(b, true); try { draw(await fn()); } catch (e) { toast(e.message, 5000); refresh(); } finally { if (b) busy(b, false); } };
+    function draw(d) {
+      if (!el.isConnected) return;
+      const p = d.pull || {};
+      $(".m-list", el).innerHTML = `<p class="small">In use: <b>${esc(d.active)}</b> · ${d.ready ? `<span style="color:var(--good)">ready</span>` : esc(d.state || "not ready")}</p>
+        ${d.installed.length ? `<div class="m-rows">${d.installed.map(m => {
+          const on = sameModel(m.name, d.active);
+          return `<div class="m-row${on ? " on" : ""}"><div><b>${esc(m.name)}</b><br><span class="muted small">${esc([gb(m.size), m.params, m.quant].filter(Boolean).join(" · "))}</span></div>
+            <div class="row nowrap">${on ? `<span class="pill good">In use</span>` : `<button class="btn small" data-use="${esc(m.name)}">Use</button><button class="btn small ghost danger" data-rm="${esc(m.name)}" aria-label="Remove ${esc(m.name)}">Remove</button>`}</div></div>`;
+        }).join("")}</div>` : `<p class="small muted">No models downloaded yet.</p>`}`;
+      $(".m-progress", el).innerHTML = p.running
+        ? `<div class="m-dl"><div class="small"><b>Downloading ${esc(p.model)}</b> · ${p.pct ? p.pct + "%" : esc(p.status || "starting")}${p.activate ? " · switches over when done" : ""}</div>
+            <progress max="100" value="${p.pct || 0}"></progress><button class="btn small ghost m-cancel" type="button">Cancel</button></div>`
+        : p.status === "failed" ? `<div class="notice warn small">Couldn't download ${esc(p.model)}: ${esc(p.error)}. Check the name on ollama.com/library.</div>`
+        : p.status === "cancelled" ? `<p class="small muted">Download of ${esc(p.model)} cancelled.</p>`
+        : p.status === "success" && Date.now() - (p.finishedAt || Date.now()) < 120e3 ? `<p class="small" style="color:var(--good)">${esc(p.model)} downloaded.</p>` : "";
+      $$("[data-use]", el).forEach(b => b.onclick = () => act(() => A.use(b.dataset.use), b).then(afterChange));
+      $$("[data-rm]", el).forEach(b => b.onclick = () => { if (confirm(`Remove ${b.dataset.rm} from ${label}? You can download it again later.`)) act(() => A.remove(b.dataset.rm), b); });
+      const c = $(".m-cancel", el); if (c) c.onclick = () => act(() => A.cancel(), c);
+      clearTimeout(timer);
+      if (p.running) timer = setTimeout(refresh, 1000);
+      else if (wasRunning) afterChange();
+      wasRunning = !!p.running;
+    }
+    let wasRunning = false;
+    function afterChange() { // refresh "Now using" above once a switch has happened
+      const s = $("#olModel"); if (s) s.value = prefs.ollamaModel;
+      (A === serverModels ? detectServer() : Promise.resolve()).then(() => { if (el.isConnected && !input.value && location.hash === "#settings") viewSettings(); });
+    }
+    function refresh() { if (el.isConnected) A.list().then(draw, e => { if (el.isConnected) $(".m-list", el).innerHTML = `<p class="small muted">Couldn't list the models: ${esc(e.message)}</p>`; }); }
+    $(".m-get", el).onclick = ev => {
+      const name = input.value.trim();
+      if (!MODEL_RE.test(name)) { input.focus(); return toast("Type a model name, like qwen3:4b"); }
+      act(() => A.use(name), ev.target).then(() => { input.value = ""; afterChange(); });
+    };
+    input.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); $(".m-get", el).click(); } };
+    $$(".m-pick", el).forEach(b => b.onclick = () => { input.value = b.dataset.m; input.focus(); });
+    refresh();
+  }
+
   function viewSettings() {
     const info = engineInfo();
     const engLabel = { server: `Your Gut Check server's local model (${info.model || "?"})`, ollama: `Ollama at ${prefs.ollamaUrl} (${prefs.ollamaModel})`, offline: "Built-in advocate (no AI model)", off: "Off" }[info.engine];
@@ -714,6 +869,7 @@
         </div>
         <small class="hint">Only needed to talk to Ollama directly from this browser (for example the GitHub Pages copy with Ollama on this computer). Ollama must allow this site: <code>OLLAMA_ORIGINS=${esc(location.origin)}</code>. See the user guide.</small>
         <div class="row" style="margin-top:10px"><button class="btn small" id="testDevil">Test the connection</button><span class="small muted" id="testOut"></span></div>
+        <div id="models"></div>
       </div>
 
       <div class="card">
@@ -754,6 +910,8 @@
       </div>
       <p class="muted small center">Gut Check ${VERSION}${server ? ` · server ${esc(server.version || "")}` : ""} · <a href="https://github.com/ryelikebread/gut-check/blob/main/docs/USER-GUIDE.md" target="_blank" rel="noopener">User guide</a></p>`;
 
+    const pickFor = info.engine === "ollama" ? "ollama" : srvDevil && srvDevil.enabled ? "server" : prefs.ollamaUrl ? "ollama" : null;
+    if (pickFor && prefs.devil) modelPicker($("#models"), pickFor === "server" ? serverModels : ollamaModels, pickFor === "server" ? "your Gut Check server" : "Ollama at " + prefs.ollamaUrl);
     $("#devOn").onchange = e => { prefs.devil = e.target.checked; savePrefs(); viewSettings(); };
     $("#devAuto").onchange = e => { prefs.autoDevil = e.target.checked; savePrefs(); };
     $$("[data-skin]").forEach(b => b.onclick = () => { prefs.skin = b.dataset.skin; savePrefs(); $$("[data-skin]").forEach(x => x.classList.toggle("on", x === b)); });
@@ -763,7 +921,7 @@
       await runDevil(SAMPLE, $("#pv", b));
     };
     $("#engine").onchange = e => { prefs.engine = e.target.value; savePrefs(); viewSettings(); };
-    $("#olUrl").onchange = e => { prefs.ollamaUrl = e.target.value.trim(); savePrefs(); };
+    $("#olUrl").onchange = e => { prefs.ollamaUrl = e.target.value.trim(); savePrefs(); viewSettings(); };
     $("#olModel").onchange = e => { prefs.ollamaModel = e.target.value.trim() || "qwen3:8b"; savePrefs(); };
     $("#testDevil").onclick = async () => {
       const out = $("#testOut"); prefs.ollamaUrl = $("#olUrl").value.trim(); prefs.ollamaModel = $("#olModel").value.trim() || "qwen3:8b"; savePrefs();

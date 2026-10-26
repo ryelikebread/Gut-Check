@@ -15,7 +15,7 @@
 
    Devil's advocate (local model through Ollama):
      OLLAMA_URL               e.g. http://ollama:11434 (empty = devil's advocate uses the built-in fallback)
-     DEVIL_MODEL              Ollama model name (default qwen3:8b)
+     DEVIL_MODEL              default Ollama model (qwen3:8b); a model picked in the app's Settings overrides it
      DEVIL_AUTO_PULL          download the model automatically if it's missing (default 1)
      DEVIL_TIMEOUT_SEC        give up on one reply after this long (default 300)
      DEVIL_MAX_TOKENS         longest reply in tokens (default 900)
@@ -126,56 +126,120 @@ function scheduleBackup() {
 }
 
 /* ---------- local model (Ollama) ---------- */
-const devil = { enabled: !!OLLAMA, model: MODEL, ready: false, state: OLLAMA ? "checking" : "not configured", busy: 0 };
-let pulling = false, lastPullAt = 0;
+/* The model can be changed from the app (Settings → Devil's advocate). The choice is kept in settings.json;
+   DEVIL_MODEL is only the default until someone picks another one. */
+const SETTINGS = path.join(DATA, "settings.json");
+const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._\-\/:@]{0,199}$/;
+let settings = readJson(SETTINGS, {}, d => d && typeof d === "object" && !Array.isArray(d));
+if (settings.model && !MODEL_RE.test(settings.model)) settings.model = "";
+const activeModel = () => settings.model || MODEL;
+const sameModel = (a, b) => a === b || a === b + ":latest" || a + ":latest" === b;
+const devil = { enabled: !!OLLAMA, model: activeModel(), ready: false, state: OLLAMA ? "checking" : "not configured", busy: 0 };
+let installed = [], lastPullAt = 0;
+const pull = { model: "", status: "", pct: 0, error: "", activate: false, running: false, startedAt: 0, finishedAt: 0, ctrl: null };
+const pullInfo = () => ({ model: pull.model, status: pull.status, pct: pull.pct, error: pull.error, activate: pull.activate, running: pull.running, startedAt: pull.startedAt, finishedAt: pull.finishedAt });
+
 async function checkOllama() {
   if (!OLLAMA) return;
+  const model = activeModel();
+  devil.model = model;
   try {
     const r = await fetch(OLLAMA + "/api/tags", { signal: AbortSignal.timeout(5000) });
     if (!r.ok) throw new Error("status " + r.status);
-    const names = ((await r.json()).models || []).map(m => m.name);
-    const has = names.some(n => n === MODEL || n === MODEL + ":latest");
-    if (has) { devil.ready = true; devil.state = "ready"; return; }
+    installed = ((await r.json()).models || []).map(m => ({ name: m.name, size: m.size || 0, modifiedAt: m.modified_at || "",
+      params: (m.details && m.details.parameter_size) || "", quant: (m.details && m.details.quantization_level) || "" }));
+    if (installed.some(m => sameModel(m.name, model))) { devil.ready = true; devil.state = "ready"; return; }
     devil.ready = false;
-    if (AUTO_PULL && !pulling && Date.now() - lastPullAt > 5 * 60e3) pullModel(); // at most one download attempt per 5 minutes
-    else if (!pulling && !lastPullAt) devil.state = `model not downloaded (run: docker compose exec ollama ollama pull ${MODEL})`;
+    if (pull.running && sameModel(pull.model, model)) return;
+    if (AUTO_PULL && !pull.running && Date.now() - lastPullAt > 5 * 60e3) { lastPullAt = Date.now(); startPull(model, { auto: true }); } // at most one automatic attempt per 5 minutes
+    else if (!pull.running) devil.state = `model ${model} isn't downloaded yet (download it in Settings, or run: docker compose exec ollama ollama pull ${model})`;
   } catch (e) {
     devil.ready = false;
-    if (!pulling) devil.state = "Ollama not reachable (" + (e.cause && e.cause.code || e.message) + ")";
+    if (!(pull.running && sameModel(pull.model, model))) devil.state = "Ollama not reachable (" + (e.cause && e.cause.code || e.message) + ")";
   }
 }
-async function pullModel() {
-  pulling = true; lastPullAt = Date.now(); devil.state = "downloading model";
-  log("ollama: downloading", MODEL, "(this can take a while the first time)");
-  try {
-    const r = await fetch(OLLAMA + "/api/pull", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: MODEL, stream: true }) });
-    if (!r.ok || !r.body) throw new Error("status " + r.status);
-    let buf = "", lastPct = -10;
-    const dec = new TextDecoder();
-    for await (const chunk of r.body) {
-      buf += dec.decode(chunk, { stream: true });
-      let i;
-      while ((i = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-        if (!line) continue;
-        const o = JSON.parse(line);
-        if (o.error) throw new Error(o.error);
-        if (o.total && o.completed) {
-          const pct = Math.floor(o.completed / o.total * 100);
-          devil.state = `downloading model (${pct}%)`;
-          if (pct >= lastPct + 10) { lastPct = pct; log("ollama: download", pct + "%"); }
+function setActiveModel(name) {
+  settings.model = name === MODEL ? "" : name;
+  writeAtomic(SETTINGS, JSON.stringify(settings));
+  devil.model = name;
+  devil.ready = installed.some(m => sameModel(m.name, name));
+  devil.state = devil.ready ? "ready" : "checking";
+  log("devil's advocate model is now", name);
+}
+/* Downloads one model at a time in the background. The app polls /api/models for progress. */
+function startPull(name, { activate = false, auto = false } = {}) {
+  Object.assign(pull, { model: name, status: "starting", pct: 0, error: "", activate, running: true, startedAt: Date.now(), finishedAt: 0, ctrl: new AbortController() });
+  const forActive = () => sameModel(pull.model, activeModel());
+  if (forActive()) devil.state = "downloading model";
+  log("ollama: downloading", name, "(this can take a while)");
+  (async () => {
+    try {
+      const r = await fetch(OLLAMA + "/api/pull", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: name, stream: true }), signal: pull.ctrl.signal });
+      if (!r.ok || !r.body) throw new Error("Ollama said " + r.status + " " + (r.body ? (await r.text().catch(() => "")).slice(0, 200) : ""));
+      let buf = "", lastPct = -10, ok = false;
+      const dec = new TextDecoder();
+      for await (const chunk of r.body) {
+        buf += dec.decode(chunk, { stream: true });
+        let i;
+        while ((i = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+          if (!line) continue;
+          const o = JSON.parse(line);
+          if (o.error) throw new Error(o.error);
+          if (o.status) pull.status = o.status;
+          if (o.status === "success") ok = true;
+          if (o.total && o.completed) {
+            pull.pct = Math.min(100, Math.floor(o.completed / o.total * 100));
+            if (forActive()) devil.state = `downloading model (${pull.pct}%)`;
+            if (pull.pct >= lastPct + 10) { lastPct = pull.pct; log("ollama: download", name, pull.pct + "%"); }
+          }
         }
       }
+      if (!ok) throw new Error("the download ended early");
+      Object.assign(pull, { running: false, status: "success", pct: 100, finishedAt: Date.now() });
+      log("ollama: model ready:", name);
+      if (pull.activate) setActiveModel(name);
+    } catch (e) {
+      const cancelled = pull.ctrl.signal.aborted;
+      Object.assign(pull, { running: false, status: cancelled ? "cancelled" : "failed", error: cancelled ? "" : e.message, finishedAt: Date.now() });
+      log("ollama: download", cancelled ? "cancelled:" : "failed:", name, cancelled ? "" : e.message);
+      if (forActive()) devil.state = cancelled ? "model download cancelled" : `model download failed${auto ? " (will retry in 5 minutes)" : ""}: ${e.message}`;
+      if (!auto) lastPullAt = Date.now(); // don't let the automatic download jump straight back in
+      return;
     }
-    log("ollama: model ready:", MODEL);
-  } catch (e) {
-    devil.state = "model download failed (will retry in 5 minutes): " + e.message;
-    log("ollama: download failed:", e.message);
-    pulling = false;
-    return;
+    checkOllama();
+  })();
+}
+async function modelsApi(req, res, p) {
+  if (!OLLAMA) return send(res, 503, { error: "No local model is configured on the server (OLLAMA_URL is empty)" });
+  const list = () => ({ active: activeModel(), default: MODEL, ready: devil.ready, state: devil.state, autoPull: AUTO_PULL, installed, pull: pullInfo() });
+  if (p === "/api/models" && req.method === "GET") { await checkOllama(); return send(res, 200, list()); }
+  if (req.method !== "POST") return send(res, 405, { error: "method not allowed" });
+  const body = await jsonBody(req, res, 4096); if (body === undefined) return;
+  const name = body && typeof body.model === "string" ? body.model.trim() : "";
+  if (p === "/api/models/cancel") { if (pull.running) pull.ctrl.abort(); return send(res, 200, list()); }
+  if (!MODEL_RE.test(name)) return send(res, 400, { error: "That doesn't look like an Ollama model name (for example qwen3:8b)" });
+  if (p === "/api/models/pull" || p === "/api/models/active") {
+    await checkOllama();
+    const activate = p === "/api/models/active" || !!body.activate;
+    if (p === "/api/models/active" && installed.some(m => sameModel(m.name, name))) { setActiveModel(name); await checkOllama(); return send(res, 200, list()); }
+    if (pull.running) {
+      if (!sameModel(pull.model, name)) return send(res, 409, { error: `Already downloading ${pull.model}. Wait for it to finish or cancel it first.`, ...list() });
+      if (activate) pull.activate = true;
+      return send(res, 202, list());
+    }
+    startPull(name, { activate });
+    return send(res, 202, list());
   }
-  pulling = false;
-  checkOllama();
+  if (p === "/api/models/delete") {
+    if (sameModel(name, activeModel())) return send(res, 400, { error: "That's the model in use. Switch to another one before removing it." });
+    const r = await fetch(OLLAMA + "/api/delete", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: name }) }).catch(e => ({ ok: false, status: 0, text: async () => e.message }));
+    if (!r.ok) return send(res, 502, { error: "Ollama couldn't remove it: " + (r.status || "") + " " + (await r.text().catch(() => "")).slice(0, 200) });
+    log("ollama: removed", name);
+    await checkOllama();
+    return send(res, 200, list());
+  }
+  return send(res, 404, { error: "not found" });
 }
 if (OLLAMA) { setTimeout(checkOllama, 1500); setInterval(checkOllama, 60e3).unref(); }
 
@@ -199,7 +263,8 @@ async function devilProxy(req, res, body) {
       if (ctrl.signal.aborted) return;
       const timer = setTimeout(() => ctrl.abort(), DEVIL_TIMEOUT);
       try {
-        const payload = { model: MODEL, messages: msgs, stream: true, think: false, keep_alive: "15m", options: { temperature: 0.7, num_predict: DEVIL_MAX_TOKENS } };
+        const model = activeModel();
+        const payload = { model, messages: msgs, stream: true, think: false, keep_alive: "15m", options: { temperature: 0.7, num_predict: DEVIL_MAX_TOKENS } };
         let r = await fetch(OLLAMA + "/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: ctrl.signal });
         if (r.status === 400) {
           const t = await r.text();
@@ -221,7 +286,7 @@ async function devilProxy(req, res, body) {
             if (o.message && o.message.content) out({ delta: o.message.content });
           }
         }
-        out({ done: true, model: MODEL });
+        out({ done: true, model });
       } finally { clearTimeout(timer); }
     });
   } catch (e) {
@@ -348,6 +413,7 @@ async function api(req, res, url) {
     }
     return send(res, 405, { error: "method not allowed" });
   }
+  if (p === "/api/models" || p.startsWith("/api/models/")) return modelsApi(req, res, p);
   if (p === "/api/devil" && req.method === "POST") {
     const body = await jsonBody(req, res, 200 * 1024); if (body === undefined) return;
     return devilProxy(req, res, body);
@@ -413,7 +479,7 @@ const server = http.createServer(async (req, res) => {
 server.requestTimeout = 0; // devil's advocate replies can stream for minutes on a CPU
 server.listen(PORT, () => log(`Gut Check ${VERSION} listening on :${PORT}, data in ${DATA}` +
   `${TOKEN ? ", sync password required" : ", no sync password set"}` +
-  `, devil's advocate: ${OLLAMA ? MODEL + " via " + OLLAMA : "built-in only"}` +
+  `, devil's advocate: ${OLLAMA ? activeModel() + " via " + OLLAMA : "built-in only"}` +
   `, reminders: ${channels().join(", ") || "in-app only"}`));
 function shutdown() { try { if (dirtySinceBackup) backup("shutdown"); } catch (e) {} server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 3000).unref(); }
 process.on("SIGTERM", shutdown); process.on("SIGINT", shutdown);

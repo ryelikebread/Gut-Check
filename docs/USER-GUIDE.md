@@ -136,6 +136,16 @@ Pick one in **Settings → Skin**; **Preview this skin** shows it on a sample de
 
 If the AI can't be reached or takes over 4 minutes, you get the built-in advocate with a note saying why. **Test the connection** checks the current choice. Each answer shows its source ("Local model · qwen3:8b" or "Built-in advocate").
 
+### Changing the AI model from the app
+
+Under Brains, the **AI model** box shows which model is in use and which ones are downloaded. It manages the model on your Gut Check server, or, if you use Ollama directly from the browser, that Ollama.
+
+- **Use** switches to a model that's already downloaded. It takes effect at once.
+- **Get another model**: type a name (or tap one of the suggestions to fill it in), then **Download and use**. A progress bar shows the download, and **Cancel** stops it. The current model keeps answering until the new one has finished, then Gut Check switches over by itself. Any model from [ollama.com/library](https://ollama.com/library) works; type the name and tag, like `qwen3:4b`.
+- **Remove** deletes a downloaded model to free disk space. The model in use can't be removed; switch first.
+
+On the server the download keeps going if you close the page, only one download runs at a time, and the choice is saved in `/data/settings.json`, so every device uses it and it survives restarts and updates. It overrides `DEVIL_MODEL` in `.env`, which is only the starting default. With Ollama directly, the download runs in the browser, so keep the page open until it finishes, and the choice is kept in that browser only. See [Choosing a model](#choosing-a-model) for which model suits your hardware.
+
 ## 7. Reminders
 
 - **In the app:** due reviews appear on Today, with a badge on the tab and a short message when you open the app.
@@ -191,7 +201,7 @@ Open `http://<server-ip>:8801`. On the very first start the server downloads the
 | `SYNC_TOKEN` | (none) | Password for the sync API. The app asks for it once per device (Settings → Server). Strongly recommended if anyone else can reach the port. |
 | `APP_URL` | (none) | The address you open Gut Check at; used for links in reminders and calendar events. |
 | `CORS_ORIGIN` | (none) | Lets other sites call the API, e.g. `https://ryelikebread.github.io` for the Pages copy. |
-| `DEVIL_MODEL` | qwen3:8b | Which Ollama model writes counterarguments. |
+| `DEVIL_MODEL` | qwen3:8b | The starting model. Once you pick one in the app (Settings → Brains → AI model), that choice wins. |
 | `DEVIL_AUTO_PULL` | 1 | Download the model automatically if missing (retries every 5 minutes on failure). |
 | `DEVIL_TIMEOUT_SEC` | 300 | Give up on one answer after this long. |
 | `DEVIL_MAX_TOKENS` | 900 | Longest answer, in tokens. |
@@ -238,11 +248,14 @@ docker compose down                       # stop (data is kept)
 The devil's advocate runs on **Ollama**, a program that runs open AI models on your own machine. Nothing you write leaves your server. The app sends Ollama your entry and the skin's personality, and streams the answer back as it's written.
 
 ### Choosing a model
-Set `DEVIL_MODEL` in `.env`, then `docker compose up -d`; the server downloads it automatically. All of these are free to use.
+The easy way is in the app: **Settings → Brains → AI model**, type or tap a name, and press **Download and use** (see [Changing the AI model from the app](#changing-the-ai-model-from-the-app)). You can also set `DEVIL_MODEL` in `.env`, but a model picked in the app takes priority. All of these are free to use.
 
 | Model | Download | RAM needed | Speed on a typical CPU* | Notes |
 |---|---|---|---|---|
+| `qwen3:1.7b` | ~1.4 GB | 3–4 GB | 10–20 s | For very small machines. Arguments are thinner and multi-voice skins can get muddled. |
+| `llama3.2:3b` | ~2 GB | 4 GB | 15–30 s | Small, quick, plain-spoken. |
 | `qwen3:4b` | ~2.5 GB | 5–6 GB | 20–40 s | Lightest that still keeps characters straight. Good for small servers or a Raspberry Pi 5 (8 GB). |
+| `gemma3:4b` | ~3.3 GB | 6 GB | 25–50 s | Writes well for its size. |
 | **`qwen3:8b`** (default) | ~5 GB | 8 GB | 40–90 s | Best balance: strong reasoning and instruction following, handles multi-voice skins (Tribunal, Pip) well. Thinking mode is switched off for speed. |
 | `llama3.1:8b` | ~5 GB | 8 GB | 40–90 s | Good alternative with a warmer, chattier style. |
 | `gemma3:12b` | ~8 GB | 12–16 GB | 1.5–3 min (seconds on GPU) | Very good, natural writing; best with a GPU with 12 GB+. |
@@ -250,7 +263,7 @@ Set `DEVIL_MODEL` in `.env`, then `docker compose up -d`; the server downloads i
 
 \* A full answer is 200–500 words. Times are rough guides for a recent 4–8 core CPU; a GPU makes any of these near-instant. The first answer after a while is slower because the model has to load (it stays loaded 15 minutes, `OLLAMA_KEEP_ALIVE`). Only one answer is generated at a time; others wait their turn.
 
-Models are kept in the `ollama-models` volume. Remove one you no longer use with `docker compose exec ollama ollama rm <name>`.
+Models are kept in the `ollama-models` volume. Remove one you no longer use with **Remove** in the app, or `docker compose exec ollama ollama rm <name>`.
 
 ### Hardware
 - **RAM** is what matters most: the table's figure is for the whole model plus Gut Check. If the server runs short, pick a smaller model.
@@ -348,7 +361,7 @@ Run `npm test`, then open Settings → Skin → Preview.
 | **`gut-check` container** | Built from this repo on the `node:22-alpine` image (Node.js 22 on Alpine Linux, ~60 MB) | The Gut Check server (`server/server.js`): serves the web app, stores and syncs your journal, writes backups, sends reminders, and passes devil's advocate requests to Ollama. Uses only Node's built-in modules, no npm packages. Runs as the unprivileged `node` user. |
 | **`gut-check-ollama` container** | `ollama/ollama` image (~1.5 GB) | Runs the local AI model. Only reachable by the app container, not published on the network. |
 | **The AI model** (default `qwen3:8b`, ~5 GB) | Downloaded by Ollama from ollama.com's registry on first start | Writes the devil's advocate answers. Open-weights model (Qwen3 is Apache 2.0 licensed). |
-| **`gut-check-data` volume** | Docker | `/data/state.json` (your journal), `/data/backups/` (timestamped copies), `/data/reminders.json` (which reminders were sent). |
+| **`gut-check-data` volume** | Docker | `/data/state.json` (your journal), `/data/backups/` (timestamped copies), `/data/reminders.json` (which reminders were sent), `/data/settings.json` (the AI model picked in the app). |
 | **`ollama-models` volume** | Docker | Downloaded models, so they aren't re-downloaded after updates. |
 | **`caddy` container** (only with `docker-compose.https.yml`) | `caddy:2-alpine` | https with automatic Let's Encrypt certificates. Volume `caddy_data` keeps the certificates. |
 | **`nginx` container** (only with the static setup) | `nginx:1.27-alpine` | Serves the web files with no server features. |
@@ -380,12 +393,13 @@ See the table in the [README](../README.md#repo-layout). Each skin is one file i
 | "Sync problem" badge | Tap it. Usually the server is off or unreachable, or the sync password is wrong (Settings → Server). |
 | GitHub Pages copy can't connect to the server | The server address must be https, and the server's `.env` needs `CORS_ORIGIN=https://ryelikebread.github.io`. |
 | Devil's advocate always says "Built-in advocate" | Settings → Brains shows why. On the server: `docker compose logs gut-check` and `docker compose exec ollama ollama list`. The model may still be downloading. |
-| "model download failed" | The server couldn't reach ollama.com; it retries every 5 minutes. Or pull it by hand: `docker compose exec ollama ollama pull qwen3:8b`. |
-| Answers are slow | Use a smaller model (`qwen3:4b`) or a GPU. The first answer after a pause includes loading the model. |
+| "model download failed" | The server couldn't reach ollama.com, or the model name is wrong (check it on ollama.com/library). The starting model is retried every 5 minutes; a model you picked in the app can be retried with **Download and use**. Or pull it by hand: `docker compose exec ollama ollama pull qwen3:8b`. |
+| Picked a model that's too big | Settings → Brains → AI model → **Use** on a smaller one, then **Remove** the big one. |
+| Answers are slow | Switch to a smaller model (`qwen3:4b`) in Settings → Brains → AI model, or use a GPU. The first answer after a pause includes loading the model. |
 | Answers time out | Raise `DEVIL_TIMEOUT_SEC`, or use a smaller model. |
 | AI answer runs together / wrong speaker names | Smaller models sometimes break format in the multi-voice skins; try `qwen3:8b` or larger, or a single-voice skin. |
 | No reminder arrived | Settings → Reminders → Send a test reminder; check `TZ` and `REMINDER_HOUR`; check the logs. |
-| Out of memory / server sluggish | The model is too big for the RAM; set a smaller `DEVIL_MODEL`, or `OLLAMA_KEEP_ALIVE=2m` to unload it sooner. |
+| Out of memory / server sluggish | The model is too big for the RAM; switch to a smaller one in the app, or `OLLAMA_KEEP_ALIVE=2m` to unload it sooner. |
 | Changes to the app don't show | Hard-refresh. If you edited `public/`, bump `VERSION` in `public/sw.js`. |
 | Port 8801 is taken | `PORT=8802` in `.env`. |
 
@@ -398,6 +412,11 @@ All under `/api/`, JSON. If `SYNC_TOKEN` is set, send `Authorization: Bearer <to
 | `GET status` | Health, version, whether a password is needed, sync revision, backups, AI model state, reminder channels. |
 | `GET state` | The journal `{rev, savedAt, state}`. |
 | `PUT state` | `{baseRev, state}`; 409 with the current copy if `baseRev` is stale. |
+| `GET models` | `{active, default, ready, state, installed:[{name, size, params, quant}], pull:{model, status, pct, running, activate, error}}`. |
+| `POST models/active` | `{model}`: switch to it; if it isn't downloaded, starts the download (202) and switches when it's done. |
+| `POST models/pull` | `{model, activate?}`: download only (or switch after, with `activate: true`). 409 if another download is running. |
+| `POST models/cancel` | Stops the running download. |
+| `POST models/delete` | `{model}`: removes a downloaded model (not the one in use). |
 | `POST devil` | `{messages:[{role, content}]}` → streamed NDJSON lines `{delta}` … `{done, model}` or `{error}`. |
 | `POST reminders/test` | Sends a test reminder through every configured channel. |
 | `GET calendar.ics` | Live calendar of open reviews. |

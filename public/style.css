@@ -199,6 +199,7 @@ dialog::backdrop { background: rgba(10, 12, 14, .5); }
 .typing { display: inline-flex; gap: 4px; padding: 4px 0; } .typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite both; }
 .typing i:nth-child(2) { animation-delay: .2s; } .typing i:nth-child(3) { animation-delay: .4s; }
 @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+.devil.still .turn { animation: none; }
 @keyframes pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 /* Pip */
@@ -241,3 +242,17 @@ dialog::backdrop { background: rgba(10, 12, 14, .5); }
 .notice { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 10px 12px; border-radius: 8px; font-size: .92rem; }
 .notice.warn { border-color: var(--warn); background: var(--warn-soft); }
 code { font-size: .88em; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; overflow-wrap: anywhere; }
+
+/* AI model picker (Settings) */
+.row.nowrap { flex-wrap: nowrap; }
+.row.nowrap input { flex: 1; min-width: 0; }
+.m-rows { display: grid; gap: 6px; margin: 6px 0; }
+.m-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; }
+.m-row.on { border-color: var(--accent); background: var(--accent-soft); }
+.m-row > div:first-child { min-width: 0; overflow-wrap: anywhere; }
+.m-dl { display: grid; gap: 6px; margin: 8px 0; }
+.m-dl progress { width: 100%; height: 10px; accent-color: var(--accent); }
+.m-dl .btn { justify-self: start; }
+.m-suggest { display: grid; gap: 4px; margin: 8px 0 4px; }
+.m-pick { text-align: left; background: none; border: 1px dashed var(--line); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: .88rem; color: inherit; cursor: pointer; }
+.m-pick:hover { border-color: var(--accent); }
