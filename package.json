@@ -1,0 +1,12 @@
+{
+  "name": "gut-check",
+  "version": "1.0.0",
+  "description": "Decision journal, prediction tracker and devil's advocate. Runs on GitHub Pages or self-hosted with Docker.",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "start": "PUBLIC_DIR=public DATA_DIR=./data node server/server.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "engines": { "node": ">=18" }
+}

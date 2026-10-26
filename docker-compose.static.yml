@@ -1,0 +1,12 @@
+# Static-only version: just the web app (nginx). Each browser keeps its own data.
+#   docker compose -f docker-compose.static.yml up -d --build
+services:
+  gut-check:
+    build:
+      context: .
+      dockerfile: Dockerfile.static
+    image: gut-check-static
+    container_name: gut-check
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:80"
