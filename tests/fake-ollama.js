@@ -2,7 +2,8 @@
 /* A stand-in for Ollama used by the tests: answers /api/tags, /api/pull, /api/delete and a streaming /api/chat. */
 const http = require("http");
 
-function start({ models = ["qwen3:8b"], reply = "Chief Justice Marlow: We have heard.\nJustice Vance: Too sure.\nChief Justice Marlow: Ruling: check first.", rejectThink = false, pullError = null, pullSteps = 1, pullStepMs = 0 } = {}) {
+function start({ models = ["qwen3:8b"], reply = "Chief Justice Marlow: We have heard.\nJustice Vance: Too sure.\nChief Justice Marlow: Ruling: check first.", rejectThink = false, pullError = null, pullSteps = 1, pullStepMs = 0, replies = null } = {}) {
+  let chats = 0; // with `replies`, successive chat calls get successive replies (the last one repeats)
   const calls = [];
   const srv = http.createServer((req, res) => {
     let body = "";
@@ -36,7 +37,7 @@ function start({ models = ["qwen3:8b"], reply = "Chief Justice Marlow: We have h
         if (!models.includes(json.model)) { res.writeHead(404, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ error: "model not found" })); }
         if (rejectThink && "think" in json) { res.writeHead(400, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ error: "model does not support thinking" })); }
         res.writeHead(200, { "Content-Type": "application/x-ndjson" });
-        const parts = reply.match(/[\s\S]{1,12}/g);
+        const parts = (replies ? replies[Math.min(chats++, replies.length - 1)] : reply).match(/[\s\S]{1,12}/g);
         let i = 0;
         const tick = () => {
           if (i < parts.length) { res.write(JSON.stringify({ message: { role: "assistant", content: parts[i++] }, done: false }) + "\n"); setTimeout(tick, 5); }

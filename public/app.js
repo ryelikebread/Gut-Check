@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   const C = window.GutCore, D = window.GutDevil;
-  const VERSION = "1.1.2";
+  const VERSION = "1.1.3";
   const DAY = C.DAY;
 
   /* ---------- tiny helpers ---------- */
@@ -613,22 +613,23 @@
     renderStage(box, skin, [], { thinking: true });
     box.scrollIntoView({ block: "nearest", behavior: reduceMotion() ? "auto" : "smooth" });
     if (info.engine === "server" || info.engine === "ollama") {
-      let text = "", last = 0;
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 240e3);
+      let last = 0, timedOut = false;
       try {
-        const msgs = D.messages(entry, skin, ctx);
-        const onDelta = d => {
-          text += d;
-          if (Date.now() - last > 250) { last = Date.now(); renderStage(box, skin, D.parseTurns(text, skin), { thinking: true, source: info.engine, model: info.model }); }
+        // Each try (there is at most one retry, if the model writes out its planning notes) gets 4 minutes.
+        const stream = async (msgs, onDelta) => {
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, 240e3);
+          try { return info.engine === "server" ? await streamServer(msgs, onDelta, ctrl.signal) : await streamOllama(msgs, onDelta, ctrl.signal); }
+          finally { clearTimeout(timer); }
         };
-        const r = info.engine === "server" ? await streamServer(msgs, onDelta, ctrl.signal) : await streamOllama(msgs, onDelta, ctrl.signal);
-        turns = D.parseTurns(text, skin); model = r.model || info.model || ""; source = info.engine;
-        if (!turns.length) throw new Error("the model sent back an empty reply");
+        const r = await D.answer(entry, skin, ctx, stream, shown => {
+          if (Date.now() - last > 250) { last = Date.now(); renderStage(box, skin, shown, { thinking: true, source: info.engine, model: info.model }); }
+        });
+        turns = r.turns; model = r.model || info.model || ""; source = info.engine;
       } catch (err) {
         turns = null;
-        note = `Couldn't get an answer from the local model (${err.name === "AbortError" ? "it took longer than 4 minutes" : err.message}), so here's the built-in advocate instead.`;
-      } finally { clearTimeout(timer); }
+        note = `Couldn't get an answer from the local model (${timedOut ? "it took longer than 4 minutes" : err.message}), so here's the built-in advocate instead.`;
+      }
     }
     if (!turns) {
       turns = D.offline(entry, skin, ctx); source = "offline"; model = "";
