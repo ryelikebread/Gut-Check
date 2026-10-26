@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   const C = window.GutCore, D = window.GutDevil;
-  const VERSION = "1.1.1";
+  const VERSION = "1.1.2";
   const DAY = C.DAY;
 
   /* ---------- tiny helpers ---------- */
@@ -743,9 +743,23 @@
   /* Ollama talked to straight from this browser: the download runs while this page stays open. */
   const olPull = { model: "", status: "", pct: 0, error: "", activate: false, running: false, ctrl: null };
   const olBase = () => prefs.ollamaUrl.replace(/\/+$/, "");
+  /* Plain-English reason a browser-to-Ollama request failed. Browsers hide the real cause behind
+     "Load failed" / "Failed to fetch", so work it out from the addresses involved. */
+  function explainOllamaFailure(err) {
+    const url = olBase();
+    let host = "", proto = "";
+    try { const u = new URL(url); host = u.hostname; proto = u.protocol; } catch (e) { return `"${url}" isn't a valid address. It should look like http://192.168.1.20:11434.`; }
+    const here = location.hostname, local = h => /^(localhost|127\.\d+\.\d+\.\d+|\[?::1\]?)$/.test(h);
+    const tips = [];
+    if (location.protocol === "https:" && proto === "http:") tips.push(`This page is https but ${url} is http, and browsers block that. Use an https address for Ollama, or skip this address: connect Gut Check to your own server (Settings → Server) and let the server talk to Ollama.`);
+    if (local(host) && !local(here)) tips.push(`"${host}" means the device you're holding, not your server. Use the server's address instead (for example http://${here}:11434), or skip this address and let the Gut Check server talk to Ollama.`);
+    if (server && server.devil && server.devil.enabled) tips.push(`You don't need this address: your Gut Check server already talks to its own Ollama. Set "Where the counterargument comes from" to Automatic and clear the address.`);
+    if (!tips.length) tips.push(`Check that Ollama is running and that ${url}/api/tags opens in this browser. If it does, Ollama is refusing this site: start it with OLLAMA_ORIGINS=${location.origin}.`);
+    return tips.join(" ");
+  }
   const ollamaModels = {
     async list() {
-      const r = await fetch(olBase() + "/api/tags", { cache: "no-store" });
+      const r = await fetch(olBase() + "/api/tags", { cache: "no-store" }).catch(e => { throw new Error(`can't reach Ollama at ${olBase()} from this browser (${e.message}). ${explainOllamaFailure(e)}`); });
       if (!r.ok) throw new Error("Ollama said " + r.status);
       const installed = ((await r.json()).models || []).map(m => ({ name: m.name, size: m.size || 0, params: (m.details && m.details.parameter_size) || "", quant: (m.details && m.details.quantization_level) || "" }));
       const ready = installed.some(m => sameModel(m.name, prefs.ollamaModel));
@@ -867,6 +881,7 @@
             <option value="ollama" ${prefs.engine === "ollama" ? "selected" : ""}>Ollama directly (address below)</option>
             <option value="offline" ${prefs.engine === "offline" ? "selected" : ""}>Built-in advocate only (no AI)</option>
           </select><small>Now using: <b>${esc(engLabel)}</b>${srvDevil ? ` · server model ${esc(srvDevil.model)}: ${srvDevil.ready ? "ready" : esc(srvDevil.state || "not ready yet")}` : ""}</small></label>
+        ${prefs.engine === "ollama" && srvDevil && srvDevil.enabled ? `<div class="notice warn small" style="margin:8px 0">This browser is set to talk to Ollama <b>directly</b>, but your Gut Check server already has its own connection to Ollama. Choose <b>Automatic</b> above and the address below isn't needed.</div>` : ""}
         <div class="grid2 wrap">
           <label class="f"><span>Ollama address <span class="muted">(optional)</span></span><input type="url" id="olUrl" placeholder="http://localhost:11434" value="${esc(prefs.ollamaUrl)}"></label>
           <label class="f"><span>Model</span><input type="text" id="olModel" placeholder="qwen3:8b" value="${esc(prefs.ollamaModel)}"></label>
@@ -929,7 +944,7 @@
     $("#olModel").onchange = e => { prefs.ollamaModel = e.target.value.trim() || "qwen3:8b"; savePrefs(); };
     $("#testDevil").onclick = async () => {
       const out = $("#testOut"); prefs.ollamaUrl = $("#olUrl").value.trim(); prefs.ollamaModel = $("#olModel").value.trim() || "qwen3:8b"; savePrefs();
-      const inf = engineInfo(); out.textContent = "Testing…";
+      const inf = engineInfo(); out.textContent = inf.engine === "ollama" ? `Testing this browser → Ollama at ${prefs.ollamaUrl}…` : "Testing…";
       try {
         if (inf.engine === "server") { const s = await detectServer(); out.textContent = s && s.devil && s.devil.ready ? `Server model ${s.devil.model} is ready.` : `Server reachable, model not ready: ${(s && s.devil && s.devil.state) || "unknown"}.`; }
         else if (inf.engine === "ollama") {
@@ -937,7 +952,7 @@
           const j = await r.json(); const names = (j.models || []).map(m => m.name);
           out.textContent = names.some(n => n === prefs.ollamaModel || n === prefs.ollamaModel + ":latest") ? `Connected. ${prefs.ollamaModel} is installed.` : `Connected, but ${prefs.ollamaModel} isn't installed. Installed: ${names.join(", ") || "none"}.`;
         } else out.textContent = inf.engine === "off" ? "The devil's advocate is turned off." : "Using the built-in advocate, which always works.";
-      } catch (e) { out.textContent = "Couldn't connect: " + e.message + ". Check the address and OLLAMA_ORIGINS."; }
+      } catch (e) { out.textContent = inf.engine === "ollama" ? `Couldn't connect from this browser straight to Ollama at ${prefs.ollamaUrl} (${e.message}). ${explainOllamaFailure(e)}` : "Couldn't connect: " + e.message; }
     };
     $("#icsAll").onclick = () => { const open = live().filter(e => e.status === "open"); if (!open.length) return toast("No open entries."); download("gut-check-reviews.ics", C.ics(open, appUrl()), "text/calendar"); };
     const tr = $("#testRem"); if (tr) tr.onclick = async () => { try { const r = await api("reminders/test", { method: "POST" }); const j = await r.json(); toast(r.ok ? "Test sent via " + j.sent.join(", ") : "Failed: " + (j.error || r.status), 5000); } catch (e) { toast(e.message, 5000); } };
