@@ -1,5 +1,5 @@
 // Offline cache. Bump VERSION whenever any file in public/ changes.
-const VERSION = "gut-check-v5";
+const VERSION = "gut-check-v6";
 const FILES = ["./", "index.html", "style.css", "app.js", "lib/core.js", "lib/devil.js", "manifest.webmanifest",
   "skins/pip.js", "skins/tribunal.js", "skins/mentor.js", "skins/prosecutor.js", "skins/owl.js", "skins/classic.js",
   "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];

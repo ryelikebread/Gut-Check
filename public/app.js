@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   const C = window.GutCore, D = window.GutDevil;
-  const VERSION = "1.1.3";
+  const VERSION = "1.1.4";
   const DAY = C.DAY;
 
   /* ---------- tiny helpers ---------- */
@@ -928,7 +928,7 @@
         <h2>Appearance</h2>
         <div class="seg" id="theme">${[["auto", "Match device"], ["light", "Light"], ["dark", "Dark"]].map(([v, l]) => `<button data-v="${v}" class="${prefs.theme === v ? "on" : ""}">${l}</button>`).join("")}</div>
       </div>
-      <p class="muted small center">Gut Check ${VERSION}${server ? ` · server ${esc(server.version || "")}` : ""} · <a href="https://github.com/ryelikebread/gut-check/blob/main/docs/USER-GUIDE.md" target="_blank" rel="noopener">User guide</a></p>`;
+      <p class="muted small center">Gut Check ${VERSION}${server ? ` · server ${esc(server.version || "")}` : ""} · <a href="https://github.com/ryelikebread/Gut-Check/blob/main/docs/USER-GUIDE.md" target="_blank" rel="noopener">User guide</a></p>`;
 
     const pickFor = info.engine === "ollama" ? "ollama" : srvDevil && srvDevil.enabled ? "server" : prefs.ollamaUrl ? "ollama" : null;
     if (pickFor && prefs.devil) modelPicker($("#models"), pickFor === "server" ? serverModels : ollamaModels, pickFor === "server" ? "your Gut Check server" : "Ollama at " + prefs.ollamaUrl);
