@@ -12,14 +12,14 @@ Verify how good your gut actually is.
 
 | | **GitHub Pages** | **Your Ubuntu server (Docker)** |
 |---|---|---|
-| Address | https://ryelikebread.github.io/gut-check/ | `http://your-server:8801` |
+| Address | https://ryelikebread.github.io/Gut-Check/ | `http://your-server:8801` |
 | Data | In each browser only (backup/restore by file) | On the server, synced across devices, with automatic backups |
 | Review reminders | In the app, plus calendar files | Also phone push (ntfy), email or chat webhook, and a live calendar feed |
 | Devil's advocate | Built-in advocate, or your server / your own Ollama | Local AI model (Ollama, default `qwen3:8b`, changeable in Settings), nothing leaves the machine |
 
 ### Server quick start
 ```sh
-git clone https://github.com/ryelikebread/gut-check.git
+git clone https://github.com/ryelikebread/Gut-Check.git
 cd gut-check
 cp .env.example .env        # optional: set SYNC_TOKEN, TZ, reminders, model
 docker compose up -d --build

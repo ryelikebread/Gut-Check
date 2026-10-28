@@ -24,7 +24,7 @@ Gut Check is a journal for your judgment. You write down decisions and predictio
 
 Open Gut Check at one of:
 
-- **GitHub Pages:** https://ryelikebread.github.io/gut-check/ (data stays in that browser)
+- **GitHub Pages:** https://ryelikebread.github.io/Gut-Check/ (data stays in that browser)
 - **Your server:** `http://your-server:8801` (data is saved on the server and shared by all your devices)
 
 On a phone, use the browser's **Add to Home Screen / Install app** to get an app icon. It works offline (over https).
@@ -185,7 +185,7 @@ On the server the download keeps going if you close the page, only one download 
 
 ### Install
 ```sh
-git clone https://github.com/ryelikebread/gut-check.git
+git clone https://github.com/ryelikebread/Gut-Check.git
 cd gut-check
 cp .env.example .env
 nano .env                # optional: uncomment and set what you want (see below)
@@ -317,7 +317,7 @@ Your journal is in a different volume (`gut-check_gut-check-data`) and is not to
 
 The GitHub Pages copy is the same app, published automatically from the `public/` folder.
 
-**One-time setup** (already done if the site loads): in the repo on GitHub go to **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**. Every push to `main` then runs the tests and publishes to **https://ryelikebread.github.io/gut-check/** (allow a few minutes; Pages caches for 10).
+**One-time setup** (already done if the site loads): in the repo on GitHub go to **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**. Every push to `main` then runs the tests and publishes to **https://ryelikebread.github.io/Gut-Check/** (allow a few minutes; Pages caches for 10).
 
 - **Data** stays in that browser. Use backup/restore to move it, or connect it to your server.
 - **Privacy note:** every site under `ryelikebread.github.io` shares one browser storage area, so another page you host there could read Gut Check's saved data. Don't host untrusted pages on the same account.
@@ -434,6 +434,7 @@ See the table in the [README](../README.md#repo-layout). Each skin is one file i
 | Problem | Fix |
 |---|---|
 | "Sync problem" badge | Tap it. Usually the server is off or unreachable, or the sync password is wrong (Settings → Server). |
+| The GitHub Pages address shows "404 / There isn't a GitHub Pages site here" | The address is case-sensitive: use **https://ryelikebread.github.io/Gut-Check/** with capital G and C, not `/gut-check/`. If the capitals are right and it still 404s, check the repo's Actions tab for a green "Test and deploy to GitHub Pages" run on `main`, and Settings → Pages → Source = GitHub Actions. |
 | GitHub Pages copy can't connect to the server | The server address must be https, and the server's `.env` needs `CORS_ORIGIN=https://ryelikebread.github.io`. |
 | "Couldn't connect from this browser straight to Ollama…" (Safari says "Load failed", Chrome "Failed to fetch") | The app is set to talk to Ollama **directly from your browser** (Settings → Brains → "Ollama directly", or an address typed under "Ollama address"). That only works if your browser can reach Ollama's own port and Ollama allows the site. **If you use the server copy, you don't need it:** set "Where the counterargument comes from" to **Automatic**, clear the "Ollama address" box, and let the Gut Check server talk to Ollama. (`localhost` in that box means the phone or laptop you're holding, not your server.) Browser-direct is only for the GitHub Pages copy. |
 | Picker wants to download a model that's already on my server | Gut Check is talking to the bundled Ollama, not yours. The picker's "Connected to Ollama at …" line shows which: see [Using an Ollama you already have](#using-an-ollama-you-already-have). |
