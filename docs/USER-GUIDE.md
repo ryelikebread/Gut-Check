@@ -90,7 +90,31 @@ You'll immediately see your score for that entry. Not ready yet? **Too early to 
 
 So a "50%" shrug always gets 75. Beating 75 consistently means your gut adds information; being very sure and wrong is punished hard.
 
-**Judgment score** (decisions) = average of the forecast score and your hindsight rating of the decision (1/5 = 0, 5/5 = 100). The big number on Scores is the average over all reviewed decisions.
+### The judgment score and the hindsight rating
+
+Your **hindsight rating** is question 3 in the review: *"Knowing only what you knew back then, how good was the decision?"* from 1 (bad call) to 5 (excellent). It is your own verdict on the **decision**, separate from how things turned out. It counts as 0, 25, 50, 75 or 100 points for 1, 2, 3, 4 or 5.
+
+The **judgment score** for one decision is half and half:
+
+> **Judgment = 50% forecast score + 50% hindsight points**
+
+- The **forecast score** (above) is how well your confidence matched what happened. It rewards being right *and* being appropriately sure.
+- The **hindsight points** are your honest rating of the quality of the thinking: did you gather what you could, weigh the options, avoid wishful thinking?
+- The **"how did it turn out for you" rating (question 2) is not in the judgment score.** It only places the decision on the luck-or-skill grid, so a lucky win can't inflate your judgment.
+- *Partly* counts as 0.5 for the forecast score. *Can't tell* and decisions you haven't reviewed are left out.
+- **Predictions** have no hindsight rating, so a prediction's score is just its forecast score.
+- The big number on Scores is the **average over all reviewed decisions**.
+
+Worked examples (you were 80% sure):
+
+| What happened | Hindsight | Forecast | Judgment | Grid label |
+|---|---|---|---|---|
+| It worked out | 4/5 (good call) | 96 | **86** | Earned it |
+| It didn't work out | 4/5 (good call) | 36 | **56** | Bad luck: the thinking was sound, the dice weren't |
+| It worked out | 2/5 (shaky) | 96 | **61** | Dumb luck: it worked, but don't count on it |
+| It didn't work out | 2/5 (shaky) | 36 | **31** | Lesson |
+
+How to use it honestly: rate the decision on what you knew **at the time**, before you look at the result. A bad outcome from a well-made decision should still get a 4 or 5, and a lucky win from a sloppy one a 1 or 2. Over many decisions the judgment score rises when you decide well and forecast well, not just when you win. A steady run of "Dumb luck" is a warning that your good results aren't coming from good process.
 
 **Calibration score** = average forecast score over everything resolved (decisions and predictions). **Brier score** is the same idea on the usual 0–1 scale where lower is better and 0.25 is a coin flip.
 
@@ -98,7 +122,27 @@ So a "50%" shrug always gets 75. Beating 75 consistently means your gut adds inf
 
 **Over/underconfidence line:** your average confidence in the side you picked, compared with how often that side was right.
 
-**Luck or skill?** grid: each reviewed decision placed by decision quality (3+ out of 5 = sound) and how it turned out (3+ = good result): *Earned it*, *Bad luck*, *Dumb luck*, *Lesson*.
+### How good and bad luck are decided (the "Luck or skill?" grid)
+
+Each reviewed decision is sorted using **two ratings you gave in the review**, and nothing else:
+
+- **Was it a sound decision?** Your **hindsight rating** (question 3: how good the decision was, knowing only what you knew then). **3, 4 or 5 = sound. 1 or 2 = shaky.**
+- **Was the result good?** Your answer to *"How did things turn out for you overall?"* (question 2). **3, 4 or 5 = good result. 1 or 2 = poor result.**
+
+The midpoint counts in your favour: **3 out of 5 is "sound" and 3 out of 5 is "good".**
+
+| | **Good result** (3–5) | **Poor result** (1–2) |
+|---|---|---|
+| **Sound decision** (3–5) | **Earned it**: you decided well and it paid off. | **Bad luck**: you decided well, it didn't work out. Don't change your method. |
+| **Shaky decision** (1–2) | **Dumb luck**: it worked, but the thinking was thin. Don't count on repeating it. | **Lesson**: shaky thinking, poor result. The one to learn from. |
+
+Things worth knowing:
+
+- **It is your own judgment, not a calculation.** Gut Check doesn't decide what was luck; it places the decision where your two ratings put it. So the labels are only as honest as the ratings. Rate the decision before you look at the result, as described above.
+- **The yes / partly / no question ("did what you expected happen?") isn't used here.** It only feeds the forecast score. That is why a decision can be "Bad luck" even though you were confident and it didn't happen: what matters is that you rated the thinking sound.
+- Only **decisions** appear in the grid, and only once **both** ratings are filled in. Predictions, entries you marked "Can't tell", and open entries aren't counted.
+- The grid and the judgment score are separate. The result rating only places a decision in the grid. The hindsight rating feeds both.
+- Changing your mind later (Undo review, then review again) re-sorts the decision.
 
 ## 6. The devil's advocate
 
