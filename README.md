@@ -33,7 +33,7 @@ npm start          # Node 18+, no npm install needed; data goes to ./data
 
 ### Development
 ```sh
-npm test           # 22 tests: scoring, sync merge, skins, server, reminders, Ollama proxy, model picker
+npm test           # 32 tests: scoring, sync merge, skins, server, reminders, Ollama proxy, model picker, planning-notes guard, on-device engine
 python3 -m http.server 8801 -d public    # static copy, no server features
 ```
 
@@ -49,6 +49,7 @@ python3 -m http.server 8801 -d public    # static copy, no server features
 | `server/mailer.js` | Tiny SMTP client for reminder emails. |
 | `docker-compose*.yml`, `Dockerfile*`, `nginx.conf` | Server, GPU, HTTPS, host-Ollama, no-AI and static setups. |
 | `.github/workflows/pages.yml` | Runs the tests, then publishes `public/` to GitHub Pages. |
+| `public/vendor/web-llm/` | Vendored WebLLM (Apache-2.0) for the optional in-browser model. |
 | `tests/` | `node --test` suites and a fake Ollama used by them. |
 
 ## Licence
