@@ -173,12 +173,32 @@ Pick one in **Settings → Skin**; **Preview this skin** shows it on a sample de
 
 | Option | What happens |
 |---|---|
-| **Automatic** (default) | Your Gut Check server's local model if the app is connected to one and the model is ready; otherwise Ollama directly if you've entered an address; otherwise the built-in advocate. |
+| **Automatic** (default) | Your Gut Check server's local model if the app is connected to one and the model is ready; otherwise Ollama directly if you've entered an address; otherwise the on-device model if you've downloaded one; otherwise the built-in advocate. |
 | **My Gut Check server's local model** | Always the server. |
 | **Ollama directly** | The browser talks to an Ollama address you enter (see [11](#ollama-directly-from-the-browser)). |
+| **On this device** | A small model downloaded into this browser (see [below](#on-this-device-a-small-ai-on-your-phone)). Only shown in browsers that support it. |
 | **Built-in advocate only** | No AI. Gut Check picks the most relevant challenges for your entry (your past calibration at that confidence, a pre-mortem, missing alternatives, thin reasoning, base rates, vague expectations, high stakes) and words them in the skin's voice. Instant, private, always available. |
 
 If the AI can't be reached or takes over 4 minutes, you get the built-in advocate with a note saying why. **Test the connection** checks the current choice. Each answer shows its source ("Local model · qwen3:8b" or "Built-in advocate").
+
+### On this device (a small AI on your phone)
+
+For a phone or any browser with no server, **Settings → Brains → On this device** can download a small language model *into the browser itself*. It then works offline, and nothing you write leaves the device. It is optional and off until you press **Download**.
+
+**What it needs.** A browser with WebGPU: Chrome 121 or newer on Android 12+, or Safari on iOS 26+. Desktop Chrome and Edge work too. Firefox on Android doesn't. If the browser can't do it, the section says why and the built-in advocate keeps working.
+
+**Honest expectations.**
+- It is slower and simpler than a server model. On a good phone expect roughly 5 to 10 words a second, and a wait of up to a minute before the first word the first time.
+- Phone support is patchy. Newer phones with 6 GB or more of memory do best. Some phones (older iPhones especially) fail to load it or the browser quietly reloads the page. If that happens Gut Check falls back to the built-in advocate, and you can try the tiny model.
+- Replies from the tiniest models can ramble or break the speaker format in the multi-voice skins. Single-voice skins (Mentor, Owl, Prosecutor) suit them best.
+
+**Steps.**
+1. Use Wi-Fi and keep the screen awake and the page open. Models are 200 to 700 MB.
+2. Settings → Brains → On this device → pick a model (the smallest, SmolLM2 360M, is the safest) → **Download**. The bar shows progress. If the page reloads, press Download again; finished files are kept.
+3. **Try it** loads it and says hello. Then either leave Brains on **Automatic** (used when no server or Ollama is set) or choose **On this device**.
+4. **Remove download** frees the space.
+
+It works with every skin, and the same planning-notes protection as the other AIs applies. Downloaded models live in the browser's own storage; clearing site data removes them.
 
 ### Changing the AI model from the app
 
@@ -465,7 +485,9 @@ Network use by the server: Ollama's model download (first start or model change)
 |---|---|
 | localStorage `gutcheck.state` | Your journal (works offline). |
 | localStorage `gutcheck.prefs`, `gutcheck.sync`, `gutcheck.draft` | Device settings, server address/password, unsaved draft. |
-| Service worker (`sw.js`) + cache `gut-check-v1` | Lets the app open offline and be installed (https only). |
+| Service worker (`sw.js`) + cache `gut-check-v7` | Lets the app open offline and be installed (https only). |
+| `public/vendor/web-llm/` (WebLLM 0.2.87, Apache-2.0) | The library that runs the optional on-device model with WebGPU. Only loaded when you press Download. Its source version and checksum are in the README beside it. |
+| Cache `gut-check-device` and the browser's model storage | The cached library, and (only if you download one) the model files, 200 to 700 MB, fetched from huggingface.co/mlc-ai. Cleared by Remove download or by clearing site data. |
 | Web app manifest + icons | Home-screen icon and name. |
 
 No trackers, analytics, external fonts or third-party scripts.
@@ -486,6 +508,8 @@ See the table in the [README](../README.md#repo-layout). Each skin is one file i
 | "model download failed" | The server couldn't reach ollama.com, or the model name is wrong (check it on ollama.com/library). The starting model is retried every 5 minutes; a model you picked in the app can be retried with **Download and use**. Or pull it by hand: `docker compose exec ollama ollama pull qwen3:8b`. |
 | Disk is full of models | Remove ones you don't use, in the app or from the command line: see [Removing downloaded models](#removing-downloaded-models). |
 | Picked a model that's too big | Settings → Brains → AI model → **Use** on a smaller one, then **Remove** the big one. |
+| "On this device" says it isn't available | The browser has no WebGPU or the phone reports too little memory. Update the browser or OS (Chrome 121+, iOS 26+), or use the built-in advocate or a server. |
+| On-device download fails or the page reloads part-way | Usually low memory or storage. Close other tabs, free some space, try the tiny SmolLM2 360M, keep the screen on, and press Download again (it resumes). Some phones simply can't. |
 | Answers are slow | Switch to a smaller model (`qwen3:4b`) in Settings → Brains → AI model, or use a GPU. The first answer after a pause includes loading the model. |
 | Answers time out | Raise `DEVIL_TIMEOUT_SEC`, or use a smaller model. |
 | The reply shows the model's planning notes ("First, I need to understand…", "Structure:", "Word count:") | Gut Check removes `<think>…</think>` blocks and other reasoning, and throws away a reply that starts with planning notes, asking the model once more with a firmer instruction. If it still plans, you get the built-in advocate with a note saying so. Notes are never shown or saved. If it happens a lot, the model is a "thinking" model that works poorly here: pick a different one in Settings → Brains → AI model (`qwen3:8b` with thinking switched off, `llama3.1:8b` and `gemma3` models don't plan out loud). |

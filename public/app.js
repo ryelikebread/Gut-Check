@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   const C = window.GutCore, D = window.GutDevil;
-  const VERSION = "1.1.4";
+  const VERSION = "1.2.0";
   const DAY = C.DAY;
 
   /* ---------- tiny helpers ---------- */
@@ -49,7 +49,7 @@
 
   /* ---------- state ---------- */
   let state = C.merge(store.get(KEY, C.emptyState()), C.emptyState());
-  const prefs = Object.assign({ theme: "auto", devil: true, autoDevil: false, skin: "pip", engine: "auto", ollamaUrl: "", ollamaModel: "qwen3:8b" }, store.get(PREF, {}));
+  const prefs = Object.assign({ theme: "auto", devil: true, autoDevil: false, skin: "pip", engine: "auto", ollamaUrl: "", ollamaModel: "qwen3:8b", deviceModel: "" }, store.get(PREF, {}));
   const sync = Object.assign({ url: "", token: "", rev: 0, lastAt: 0, lastError: "" }, store.get(SYNC, {}));
   let server = null;        // /api/status of a reachable Gut Check server
   let sameOrigin = false;   // the page itself is served by a Gut Check server
@@ -516,9 +516,11 @@
     const srv = server && server.devil && server.devil.enabled;
     if (prefs.engine === "offline") return { engine: "offline" };
     if (prefs.engine === "server") return srv ? { engine: "server", model: server.devil.model } : { engine: "offline", why: "no Gut Check server with a local model is connected" };
+    if (prefs.engine === "device") return prefs.deviceModel && window.GutDevice ? { engine: "device", model: prefs.deviceModel } : { engine: "offline", why: "no on-device model has been downloaded yet" };
     if (prefs.engine === "ollama") return prefs.ollamaUrl ? { engine: "ollama", model: prefs.ollamaModel } : { engine: "offline", why: "no Ollama address is set" };
     if (srv) return { engine: "server", model: server.devil.model };
     if (prefs.ollamaUrl) return { engine: "ollama", model: prefs.ollamaModel };
+    if (prefs.deviceModel && window.GutDevice) return { engine: "device", model: prefs.deviceModel };
     return { engine: "offline" };
   }
   async function readNDJSON(res, onObj) {
@@ -612,14 +614,14 @@
     box.innerHTML = "";
     renderStage(box, skin, [], { thinking: true });
     box.scrollIntoView({ block: "nearest", behavior: reduceMotion() ? "auto" : "smooth" });
-    if (info.engine === "server" || info.engine === "ollama") {
+    if (info.engine === "server" || info.engine === "ollama" || info.engine === "device") {
       let last = 0, timedOut = false;
       try {
         // Each try (there is at most one retry, if the model writes out its planning notes) gets 4 minutes.
         const stream = async (msgs, onDelta) => {
           const ctrl = new AbortController();
           const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, 240e3);
-          try { return info.engine === "server" ? await streamServer(msgs, onDelta, ctrl.signal) : await streamOllama(msgs, onDelta, ctrl.signal); }
+          try { return info.engine === "server" ? await streamServer(msgs, onDelta, ctrl.signal) : info.engine === "device" ? await window.GutDevice.stream(prefs.deviceModel, msgs, onDelta, ctrl.signal) : await streamOllama(msgs, onDelta, ctrl.signal); }
           finally { clearTimeout(timer); }
         };
         const r = await D.answer(entry, skin, ctx, stream, shown => {
@@ -860,9 +862,46 @@
     refresh();
   }
 
+  /* "On this device": download and manage a small model that runs inside this browser (phones, no server). */
+  async function deviceSection(el) {
+    const G = window.GutDevice, sup = await G.support();
+    if (!el.isConnected) return;
+    if (!sup.ok) { el.innerHTML = `<h3 style="margin-top:18px">On this device</h3><p class="small muted">Not available here: ${esc(sup.reason)}. The built-in advocate still works.</p>`; return; }
+    const list = G.modelsFor(sup);
+    const cur = prefs.deviceModel, curM = G.byId(cur);
+    el.innerHTML = `<h3 style="margin-top:18px">On this device</h3>
+      <p class="small">Runs a small AI model <b>inside this browser</b>. It works offline once downloaded and nothing you write leaves the device. It is slower and simpler than a server model, and some phones can't run it.</p>
+      ${cur ? `<p class="small">Installed: <b>${esc(curM ? curM.name : cur)}</b>. ${prefs.engine === "device" || prefs.engine === "auto" ? "" : "Choose “On this device” in the list above to use it."}</p>
+        <div class="row"><button class="btn small" id="dvTest">Try it</button><button class="btn small ghost danger" id="dvDel">Remove download</button></div>`
+      : `<label class="f"><span>Model to download</span><select id="dvPick">${list.map(m => `<option value="${esc(m.id)}">${esc(m.name)}: about ${m.mb} MB</option>`).join("")}</select><small id="dvNote">${esc(list[0].note)}</small></label>
+        <div class="notice warn small" style="margin:8px 0">This is a one-time download of a few hundred MB. Use Wi-Fi. Keep this screen open and awake until it finishes. If the page reloads, press Download again; it resumes.</div>
+        <div class="row"><button class="btn small primary" id="dvGet">Download</button></div>`}
+      <div hidden id="dvBar" style="margin-top:8px;height:8px;border-radius:4px;background:var(--line,#8884)"><div style="height:8px;border-radius:4px;background:var(--accent,#7c5cff);width:0" id="dvFill"></div></div>
+      <div class="small muted" id="dvOut"></div>`;
+    const out = $("#dvOut", el), say = t => { out.textContent = t; };
+    const pickEl = $("#dvPick", el); if (pickEl) pickEl.onchange = () => { $("#dvNote", el).textContent = (G.byId(pickEl.value) || {}).note || ""; };
+    const get = $("#dvGet", el); if (get) get.onclick = async () => {
+      const id = pickEl.value; get.disabled = true; $("#dvBar", el).hidden = false;
+      try {
+        await G.load(id, (f, t) => { $("#dvFill", el).style.width = Math.round((f || 0) * 100) + "%"; say(t || ""); });
+        prefs.deviceModel = id; savePrefs();
+        toast("Model ready. It's used when no server is connected, or choose “On this device” above.", 5000); viewSettings();
+      } catch (e) { get.disabled = false; $("#dvBar", el).hidden = true; say(`Couldn't set it up: ${e.message}. The phone may be low on memory or storage. Try the tiny model, close other tabs, or keep using the built-in advocate.`); }
+    };
+    const del = $("#dvDel", el); if (del) del.onclick = async () => {
+      if (!confirm("Remove the downloaded model from this device? You can download it again later.")) return;
+      try { await G.remove(cur); } catch (e) {} prefs.deviceModel = ""; if (prefs.engine === "device") prefs.engine = "auto"; savePrefs(); viewSettings();
+    };
+    const test = $("#dvTest", el); if (test) test.onclick = async () => {
+      test.disabled = true; say("Loading the model into memory (the first time can take a minute)…");
+      try { let n = ""; await G.stream(cur, [{ role: "user", content: "Say hello in five words." }], d => { n += d; }, null); say("It answered: " + n.trim().slice(0, 120)); }
+      catch (e) { say("Failed: " + e.message); } test.disabled = false;
+    };
+  }
+
   function viewSettings() {
     const info = engineInfo();
-    const engLabel = { server: `Your Gut Check server's local model (${info.model || "?"})`, ollama: `Ollama at ${prefs.ollamaUrl} (${prefs.ollamaModel})`, offline: "Built-in advocate (no AI model)", off: "Off" }[info.engine];
+    const engLabel = { server: `Your Gut Check server's local model (${info.model || "?"})`, ollama: `Ollama at ${prefs.ollamaUrl} (${prefs.ollamaModel})`, device: `This device (${(window.GutDevice && window.GutDevice.byId(info.model) || {}).name || info.model})`, offline: "Built-in advocate (no AI model)", off: "Off" }[info.engine];
     const srvDevil = server && server.devil;
     view.innerHTML = `
       <h1>Settings</h1>
@@ -880,6 +919,7 @@
             <option value="auto" ${prefs.engine === "auto" ? "selected" : ""}>Automatic (best available)</option>
             <option value="server" ${prefs.engine === "server" ? "selected" : ""}>My Gut Check server's local model</option>
             <option value="ollama" ${prefs.engine === "ollama" ? "selected" : ""}>Ollama directly (address below)</option>
+            ${window.GutDevice ? `<option value="device" ${prefs.engine === "device" ? "selected" : ""}>On this device (small model in the browser)</option>` : ""}
             <option value="offline" ${prefs.engine === "offline" ? "selected" : ""}>Built-in advocate only (no AI)</option>
           </select><small>Now using: <b>${esc(engLabel)}</b>${srvDevil ? ` · server model ${esc(srvDevil.model)}: ${srvDevil.ready ? "ready" : esc(srvDevil.state || "not ready yet")}` : ""}</small></label>
         ${prefs.engine === "ollama" && srvDevil && srvDevil.enabled ? `<div class="notice warn small" style="margin:8px 0">This browser is set to talk to Ollama <b>directly</b>, but your Gut Check server already has its own connection to Ollama. Choose <b>Automatic</b> above and the address below isn't needed.</div>` : ""}
@@ -890,6 +930,7 @@
         <small class="hint">Only needed to talk to Ollama directly from this browser (for example the GitHub Pages copy with Ollama on this computer). Ollama must allow this site: <code>OLLAMA_ORIGINS=${esc(location.origin)}</code>. See the user guide.</small>
         <div class="row" style="margin-top:10px"><button class="btn small" id="testDevil">Test the connection</button><span class="small muted" id="testOut"></span></div>
         <div id="models"></div>
+        <div id="onDevice"></div>
       </div>
 
       <div class="card">
@@ -932,6 +973,7 @@
 
     const pickFor = info.engine === "ollama" ? "ollama" : srvDevil && srvDevil.enabled ? "server" : prefs.ollamaUrl ? "ollama" : null;
     if (pickFor && prefs.devil) modelPicker($("#models"), pickFor === "server" ? serverModels : ollamaModels, pickFor === "server" ? "your Gut Check server" : "Ollama at " + prefs.ollamaUrl);
+    if (window.GutDevice) deviceSection($("#onDevice"));
     $("#devOn").onchange = e => { prefs.devil = e.target.checked; savePrefs(); viewSettings(); };
     $("#devAuto").onchange = e => { prefs.autoDevil = e.target.checked; savePrefs(); };
     $$("[data-skin]").forEach(b => b.onclick = () => { prefs.skin = b.dataset.skin; savePrefs(); $$("[data-skin]").forEach(x => x.classList.toggle("on", x === b)); });
